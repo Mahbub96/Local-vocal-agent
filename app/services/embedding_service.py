@@ -24,12 +24,13 @@ class EmbeddingService:
         *,
         source: str = "chat",
         extra_metadata: dict[str, Any] | None = None,
+        user_id: str | None = None,
     ) -> None:
         document = self._build_document(message)
         if not document:
             return
         embedding = await self.embedding_client.embed_text(document)
-        metadata = {
+        metadata: dict[str, Any] = {
             "message_id": message.id,
             "session_id": message.session_id,
             "role": message.role,
@@ -43,6 +44,8 @@ class EmbeddingService:
         }
         if extra_metadata:
             metadata.update(extra_metadata)
+        if user_id:
+            metadata["user_id"] = str(user_id)
 
         self.collection.upsert(
             ids=[message.id],

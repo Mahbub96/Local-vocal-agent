@@ -177,6 +177,7 @@ async def memory_search(
     db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
     top_k: Annotated[int, Query(ge=1, le=20)] = 5,
     session_id: Annotated[str | None, Query()] = None,
+    user_id: Annotated[str | None, Query()] = None,
 ) -> MemorySearchResponse:
     memory_service = MemoryService(db_session)
     embedding_service = EmbeddingService()
@@ -188,6 +189,7 @@ async def memory_search(
         query,
         top_k=top_k,
         session_id=session_id,
+        user_id=user_id,
     )
     return MemorySearchResponse(
         matches=[

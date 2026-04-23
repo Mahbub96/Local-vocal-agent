@@ -22,6 +22,7 @@ class MemoryContext:
     session_id: str
     short_term_messages: list[dict[str, str]]
     long_term_messages: list[Message]
+    user_profile: dict[str, Any] | None = None
 
 
 class MemoryService:
@@ -41,6 +42,10 @@ class MemoryService:
         if session_id:
             session = await self.db_session.get(Session, session_id)
             if session is not None:
+                if user_id and session.user_id != user_id:
+                    session.user_id = user_id
+                    await self.db_session.commit()
+                    await self.db_session.refresh(session)
                 return session
 
         session = Session(title=title, user_id=user_id)
@@ -111,6 +116,7 @@ class MemoryService:
         session_id: str,
         *,
         long_term_messages: list[Message] | None = None,
+        user_id: str | None = None,
     ) -> MemoryContext:
         short_term_messages = self.short_term_store.get(session_id)
         if not short_term_messages:
@@ -124,10 +130,15 @@ class MemoryService:
             short_term_messages=short_term_messages,
             long_term_messages=long_term_messages or [],
         )
+        profile: dict[str, Any] | None = None
+        if user_id:
+            p = await self.get_user_profile(user_id)
+            profile = p if p else None
         return MemoryContext(
             session_id=session_id,
             short_term_messages=short_term_messages,
             long_term_messages=long_term_context,
+            user_profile=profile,
         )
 
     async def fetch_messages_by_ids(self, message_ids: list[str]) -> list[Message]:

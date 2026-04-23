@@ -85,6 +85,33 @@ _LLM_TIME_PLACEHOLDER = re.compile(
 )
 
 
+def _user_profile_block(profile: dict | None) -> str:
+    if not profile:
+        return ""
+    parts: list[str] = []
+    for key, label in (
+        ("name", "Name"),
+        ("language", "Language"),
+        ("location", "Location"),
+        ("profession", "Profession"),
+        ("project", "Project"),
+    ):
+        v = profile.get(key)
+        if isinstance(v, str) and v.strip():
+            parts.append(f"- {label}: {v.strip()}")
+    prefs = profile.get("preferences")
+    if isinstance(prefs, list) and prefs:
+        parts.append(f"- Preferences: {', '.join(str(p) for p in prefs if p)}")
+    if not parts:
+        return ""
+    return (
+        "Saved user profile (authoritative for this user; if a name is listed, use it when they ask their name; "
+        "do not claim you have no access to their name if it is shown here):\n"
+        + "\n".join(parts)
+        + "\n\n"
+    )
+
+
 def _strip_llm_time_placeholders(response: str, time_line: str | None) -> str:
     if time_line:
         clock = extract_iso_clock_from_time_line(time_line) or time_line
@@ -137,6 +164,7 @@ class AssistantAgent:
 
         use_search = should_use_internet_search(query, memory_context, zone=zone)
 
+        profile_text = _user_profile_block(memory_context.user_profile)
         long_term_context = "\n".join(
             f"[{msg.role}] {msg.content}" for msg in memory_context.long_term_messages
         ) or "No semantically relevant memory retrieved."
@@ -175,6 +203,7 @@ class AssistantAgent:
             "FORBIDDEN: the phrase 'insert' near 'time' and 'here', bracket templates, TBD, or [placeholder] for time.\n"
             "When web snippets or LIVE TIME are provided, use them for facts; do not invent times.\n"
             "If web has no snippets and memory is thin, you may use general knowledge and say you could not verify online.\n\n"
+            f"{profile_text}"
             f"Recent conversation:\n{short_term_context}\n\n"
             f"Retrieved long-term memory (semantic search):\n{long_term_context}\n\n"
             f"Internet / live data (may be empty):\n{web_context}\n\n"

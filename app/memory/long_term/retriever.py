@@ -41,18 +41,40 @@ class LongTermMemoryRetriever:
         *,
         top_k: int | None = None,
         session_id: str | None = None,
+        user_id: str | None = None,
     ) -> list[SemanticMemoryMatch]:
         query_embedding = await self.embedding_service.embed_query(query)
-        query_filter = {"session_id": session_id} if session_id else None
+        if session_id and user_id:
+            # Cross-session recall: index metadata includes user_id; OR keeps current session matches
+            # (including legacy points without user_id) until re-indexed.
+            query_filter: dict | None = {
+                "$or": [{"user_id": user_id}, {"session_id": session_id}]
+            }
+        elif session_id:
+            query_filter = {"session_id": session_id}
+        else:
+            query_filter = None
+        k = top_k or settings.memory_top_k
         try:
             result = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=top_k or settings.memory_top_k,
+                n_results=k,
                 where=query_filter,
                 include=["metadatas", "distances"],
             )
         except Exception:
-            return []
+            if session_id:
+                try:
+                    result = self.collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=k,
+                        where={"session_id": session_id},
+                        include=["metadatas", "distances"],
+                    )
+                except Exception:
+                    return []
+            else:
+                return []
 
         ids = result.get("ids", [[]])[0]
         distances = result.get("distances", [[]])[0]

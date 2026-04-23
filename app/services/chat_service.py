@@ -20,6 +20,12 @@ from app.core.settings import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# Widen vector recall for "who am I" / "my name" so prior self-intro messages still rank.
+_IDENTITY_RETRIEVAL = re.compile(
+    r"(?i)(my name|what(?:'s| is) my name|who am i\b|"
+    r"do you know my name|remind me.*\bname\b|call me|i(?:'m| am)\b.*name)"
+)
+
 
 class ChatService:
     """Coordinates chat persistence, memory retrieval, and agent execution."""
@@ -58,16 +64,24 @@ class ChatService:
             session_id=session_id,
             user_id=user_id,
         )
+        effective_user_id = (user_id or session.user_id) or None
         user_message = await self.memory_service.add_message(
             session.id,
             role="user",
             content=normalized_message,
         )
 
+        retrieval_query = normalized_message
+        if effective_user_id and _IDENTITY_RETRIEVAL.search(normalized_message):
+            retrieval_query = (
+                f"{normalized_message}\n"
+                f"name identity self-introduction who I am user profile preferences"
+            )
         try:
             semantic_matches = await self.retriever.search(
-                normalized_message,
+                retrieval_query,
                 session_id=session.id,
+                user_id=effective_user_id,
             )
         except Exception as exc:
             logger.exception("Semantic retrieval failed; continuing without long-term memory: %s", exc)
@@ -75,6 +89,7 @@ class ChatService:
         memory_context = await self.memory_service.build_context(
             session.id,
             long_term_messages=[match.message for match in semantic_matches],
+            user_id=effective_user_id,
         )
 
         agent_result = await self.agent.run(query=normalized_message, memory_context=memory_context)
@@ -90,10 +105,14 @@ class ChatService:
         )
 
         self._schedule_background_task(
-            self.embedding_service.index_message(user_message, source="chat")
+            self.embedding_service.index_message(
+                user_message, source="chat", user_id=effective_user_id
+            )
         )
         self._schedule_background_task(
-            self.embedding_service.index_message(assistant_message, source="chat")
+            self.embedding_service.index_message(
+                assistant_message, source="chat", user_id=effective_user_id
+            )
         )
 
         audio_path: Path | None = None
