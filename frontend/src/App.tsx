@@ -48,6 +48,13 @@ function App() {
               voiceStatus={voiceStatus}
               languageLabel={voiceLanguageLabel}
               lastAssistantSnippet={lastAssistantText}
+              onLanguageChange={
+                profile
+                  ? (language) => {
+                      void saveProfile({ ...profile, language });
+                    }
+                  : undefined
+              }
             />
             <ChatPanel
               title={activeSessionTitle}

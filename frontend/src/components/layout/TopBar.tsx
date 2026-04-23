@@ -15,7 +15,13 @@ export function TopBar({ onThemeToggle, userInitial }: TopBarProps) {
 
   return (
     <header className="topbar">
-      <div className="topbar-spacer" aria-hidden />
+      <div className="topbar-left" aria-hidden>
+        <span className="topbar-dots">
+          <i className="topbar-dots__r" />
+          <i className="topbar-dots__y" />
+          <i className="topbar-dots__g" />
+        </span>
+      </div>
       <div className="topbar-brand" aria-label="Aurora AI Assistant">
         <div className="topbar-brand__stack">
           <div className="topbar-brand__titleline">

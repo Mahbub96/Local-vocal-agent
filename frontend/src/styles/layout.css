@@ -45,8 +45,38 @@
   gap: 8px;
 }
 
-.topbar-spacer {
+.topbar-left {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   min-width: 0;
+  grid-column: 1;
+  padding-left: 2px;
+}
+
+.topbar-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.85;
+}
+
+.topbar-dots i {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+}
+
+.topbar-dots__r {
+  background: #ff5f57;
+}
+.topbar-dots__y {
+  background: #febc2e;
+}
+.topbar-dots__g {
+  background: #28c840;
 }
 
 .topbar-brand {

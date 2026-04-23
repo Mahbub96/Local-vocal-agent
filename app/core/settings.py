@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     api_prefix: str = "/api/v1"
     search_provider: str = "google"
     chat_max_input_chars: int = 4000
+    # When the semantic memory retriever returns no long-term hits, run DuckDuckGo for the user message.
+    assistant_search_if_no_memory: bool = True
     cors_allowed_origins: list[str] = Field(
         default_factory=lambda: [
             "http://127.0.0.1:5173",

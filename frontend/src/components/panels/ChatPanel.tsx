@@ -51,11 +51,13 @@ export function ChatPanel({
 
   return (
     <Card className="chat-card">
-      <p className="chat-session-line muted">Session — {title}</p>
+      <span className="visually-hidden">Session: {title}</span>
       <div className="chat-day-center">
-        <span className="chat-day-pill" title="Current thread day">
+        <span className="chat-day-pill" title={title || "Session"}>
           {dayLabel}
-          <span className="chat-day-pill__chev" aria-hidden>▾</span>
+          <span className="chat-day-pill__chev" aria-hidden>
+            ▾
+          </span>
         </span>
       </div>
       <div className="chat-list">

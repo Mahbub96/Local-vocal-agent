@@ -1,9 +1,9 @@
 /* Aurora — cyberpunk / dark: single source for all CSS custom properties. */
 
 const c = {
-  /* Full dashboard ref: near-black + navy charcoal panels */
-  pageBg: "#05050a",
-  cardTop: "#0d0e1a",
+  /* Reference canvas */
+  pageBg: "#0a0a0f",
+  cardTop: "#0e1018",
   cardBottom: "#0a0b12",
   railStart: "#060712",
   railEnd: "#0a0c14",
@@ -55,7 +55,7 @@ const c = {
   voiceWaveC: "#9747ff",
   voiceOrbitCyan: "#40c9ff",
   voiceOrbitPurple: "#9747ff",
-  voiceCardBg: "#0d0e1a",
+  voiceCardBg: "#0c0d14",
   /** Panel lift — separate from generic cards */
   voiceCardShadow:
     "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 28px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06)",
@@ -127,7 +127,8 @@ const effect = {
   railLogo: "0 0 0 1px var(--c-rail-logo-ring), 0 0 24px rgba(64, 224, 255, 0.45)",
   voiceLiveGlow: "0 0 12px var(--c-voice-live)",
   voiceRingShadow: "0 0 48px rgba(151, 71, 255, 0.38), 0 0 64px rgba(64, 201, 255, 0.22)",
-  stopBtn: "0 0 24px rgba(151, 71, 255, 0.55), 0 0 40px rgba(64, 201, 255, 0.35)",
+  stopBtn:
+    "0 0 0 2px rgba(139, 92, 246, 0.45), 0 0 0 3px rgba(64, 201, 255, 0.22), 0 0 28px rgba(151, 71, 255, 0.5), 0 0 44px rgba(64, 201, 255, 0.32)",
   waveLine: `linear-gradient(90deg, ${c.voiceWaveA}, ${c.voiceWaveB}, ${c.voiceWaveC}, ${c.voiceWaveA})`,
 } as const;
 
@@ -150,11 +151,11 @@ const layout = {
   topIconGap: "12px",
   cardRadius: "14px",
   cardPad: "20px",
-  /** Voice panel (reference) */
-  voiceCardRadius: "16px",
-  voiceOutRadius: "8px",
-  voiceRingOuter: "180px",
-  voiceRingInner: "118px",
+  /** Voice panel (reference ~12px cards) */
+  voiceCardRadius: "14px",
+  voiceOutRadius: "12px",
+  voiceRingOuter: "200px",
+  voiceRingInner: "128px",
   voiceOutCol: "minmax(220px, 280px)",
 } as const;
 
