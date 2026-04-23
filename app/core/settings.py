@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     api_prefix: str = "/api/v1"
+    search_provider: str = "google"
+    chat_max_input_chars: int = 4000
+    cors_allowed_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ]
+    )
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
@@ -65,6 +73,7 @@ class Settings(BaseSettings):
 
     upload_dir: Path = BASE_DIR / "storage" / "uploads"
     temp_dir: Path = BASE_DIR / "storage" / "tmp"
+    files_root: Path = BASE_DIR
 
     @property
     def sqlite_url(self) -> str:
@@ -99,6 +108,26 @@ class Settings(BaseSettings):
         )
         for path in required_paths:
             path.mkdir(parents=True, exist_ok=True)
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def normalize_cors_origins(cls, value: object) -> list[str]:
+        """Allow both CSV string and list input for CORS origins."""
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        if isinstance(value, list):
+            return [str(origin).strip() for origin in value if str(origin).strip()]
+        raise ValueError("CORS_ALLOWED_ORIGINS must be a comma-separated string or list")
+
+    @field_validator("search_provider", mode="before")
+    @classmethod
+    def normalize_search_provider(cls, value: object) -> str:
+        provider = str(value or "google").strip().lower()
+        if provider not in {"google", "duckduckgo"}:
+            raise ValueError("SEARCH_PROVIDER must be either 'google' or 'duckduckgo'")
+        return provider
 
 
 @lru_cache

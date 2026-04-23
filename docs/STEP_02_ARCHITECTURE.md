@@ -12,8 +12,8 @@
   - memory
   - database lookup
   - internet search
-- LangChain agent builds the tool-enabled execution path.
-- Ollama Qwen 8B generates the response.
+- Assistant orchestration decides internet usage using deterministic routing rules.
+- Ollama Qwen model generates the response.
 - Response is stored in SQLite and embedded into ChromaDB.
 - If voice output is requested:
   - Response text -> TTS module -> audio output
@@ -38,13 +38,13 @@ Audio -> Whisper STT
    |        |        |        |
    v        v        v        v
 Memory   SQLite   Chroma   Internet Search
-Lookup   Lookup   Search   (DuckDuckGo)
+Lookup   Lookup   Search   (Google RSS / DuckDuckGo fallback)
    \        |        |        /
     \       |        |       /
-     +------> LangChain Agent
+     +------> Assistant Orchestrator
                 |
                 v
-         Ollama Qwen 8B
+         Ollama Qwen
                 |
                 v
       Response Persistence Layer
@@ -138,14 +138,14 @@ If input is audio:
   transcribe first
 
 If query is real-time / current-events dependent:
-  use DuckDuckGo search tool
+  use internet search tool (default provider: Google News RSS)
 
 Else:
   use memory retrieval
   use SQLite + Chroma context
 
 Then:
-  send assembled context to LangChain agent + Qwen
+  send assembled context to assistant orchestrator + Qwen
 ```
 
 ### Suggested Rule Order
@@ -158,12 +158,12 @@ Then:
 - Step 6: generate response
 - Step 7: persist everything
 
-## 4. LangChain Agent Structure
+## 4. Assistant Orchestration Structure
 
-- LangChain acts as the orchestration layer.
+- Assistant orchestration handles deterministic tool routing.
 - Main components:
-  - LLM wrapper for Ollama Qwen 8B
-  - Tool registry
+  - LLM wrapper for Ollama Qwen
+  - Search client (Google News RSS default, DuckDuckGo fallback)
   - Prompt template
   - Decision routing logic
   - Memory/context assembler
@@ -173,10 +173,8 @@ Then:
 - `memory_search_tool`
   - queries ChromaDB
   - returns relevant past conversation snippets
-- `conversation_fetch_tool`
-  - fetches complete records from SQLite
 - `internet_search_tool`
-  - uses DuckDuckGo for real-time information
+  - uses configured web source for real-time information
 - optional internal utility tools
   - session resolver
   - metadata fetcher
@@ -195,14 +193,13 @@ Prompt Builder
    +-- tool descriptions
    |
    v
-LangChain Agent Executor
+Assistant Orchestrator
    |
    +-- Tool: memory_search_tool
-   +-- Tool: conversation_fetch_tool
    +-- Tool: internet_search_tool
    |
    v
-Ollama Qwen 8B
+Ollama Qwen
    |
    v
 Final Response
@@ -211,7 +208,7 @@ Final Response
 ### Practical Design
 
 - Use a central `AssistantOrchestrator`
-- Use LangChain agent for tool invocation
+- Use deterministic orchestration with explicit tool routing
 - Keep memory retrieval service separate from the agent
 - Keep tool wrappers thin and focused
 - Keep prompt assembly outside route handlers
@@ -265,7 +262,17 @@ Audio Output
 - Voice and text routes should share the same core orchestration service
 - Only input/output modality should differ; reasoning path should remain the same
 
-## 6. High-Level Service Layout
+## 6. Search Provider Behavior
+
+- Config key: `SEARCH_PROVIDER`
+  - `google` (default)
+  - `duckduckgo`
+- Provider behavior:
+  - Prothom Alo-related queries use Prothom Alo RSS source.
+  - Generic realtime queries use Google News RSS in default mode.
+  - If provider returns no results, fallback source is used.
+
+## 7. High-Level Service Layout
 
 ```text
 API Layer
@@ -280,7 +287,7 @@ Voice Service
 Chat Service
   -> Decision Engine
   -> Memory Service
-  -> LangChain Agent
+  -> Assistant Orchestrator
   -> Ollama Wrapper
   -> Persistence Layer
 ```

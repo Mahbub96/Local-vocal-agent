@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import re
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,9 +14,11 @@ from app.schemas.chat import ChatResponse
 from app.services.embedding_service import EmbeddingService
 from app.services.memory_service import MemoryService
 from app.integrations.tts.coqui_tts import CoquiTTSService
+from app.core.settings import get_settings
 
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class ChatService:
@@ -47,7 +50,7 @@ class ChatService:
         include_tts: bool = False,
         defer_tts: bool = False,
     ) -> ChatResponse:
-        normalized_message = " ".join(message.strip().split())
+        normalized_message = self._prepare_message(message)
         if not normalized_message:
             raise ValueError("Message cannot be empty.")
 
@@ -80,6 +83,10 @@ class ChatService:
             role="assistant",
             content=str(agent_result["response"]),
             parent_message_id=user_message.id,
+            tool_name="internet_search_tool"
+            if bool(agent_result.get("used_internet"))
+            else "memory_context_tool",
+            tool_output=str(agent_result.get("tool_result", "")),
         )
 
         self._schedule_background_task(
@@ -114,6 +121,24 @@ class ChatService:
             used_internet=bool(agent_result["used_internet"]),
             audio_path=str(audio_path) if audio_path else None,
         )
+
+    def _prepare_message(self, message: str) -> str:
+        text = message.strip()
+        if not text:
+            return ""
+
+        if len(text) > settings.chat_max_input_chars:
+            text = self._compact_large_input(text, settings.chat_max_input_chars)
+        return " ".join(text.split())
+
+    def _compact_large_input(self, text: str, limit: int) -> str:
+        # LaTeX payloads can be very long and command-heavy; extract readable parts.
+        if "\\documentclass" in text or text.count("\\") >= 20:
+            extracted = re.findall(r"\{([^{}]+)\}", text)
+            compact = " ".join(chunk.strip() for chunk in extracted if chunk.strip())
+            if compact:
+                text = compact
+        return text[:limit]
 
     def _schedule_background_task(self, coroutine: Any) -> None:
         task = asyncio.create_task(coroutine)

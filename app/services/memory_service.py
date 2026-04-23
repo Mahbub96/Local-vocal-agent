@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import get_settings
 from app.memory.short_term.cache import short_term_memory_store
-from app.models import Message, Session
+from app.models import Message, Metadata, Session
 
 
 settings = get_settings()
@@ -152,6 +153,199 @@ class MemoryService:
 
         result = await self.db_session.execute(statement)
         return result.scalars().all()
+
+    async def list_sessions(
+        self,
+        *,
+        user_id: str | None = None,
+        limit: int = 20,
+        is_active: int = 1,
+    ) -> list[Session]:
+        statement: Select[tuple[Session]] = select(Session).where(Session.is_active == is_active)
+        if user_id:
+            statement = statement.where(Session.user_id == user_id)
+        statement = statement.order_by(desc(Session.last_message_at), desc(Session.created_at)).limit(
+            limit
+        )
+        result = await self.db_session.execute(statement)
+        return result.scalars().all()
+
+    async def get_session(self, session_id: str) -> Session | None:
+        return await self.db_session.get(Session, session_id)
+
+    async def update_session(
+        self,
+        session_id: str,
+        *,
+        title: str | None = None,
+        is_active: int | None = None,
+    ) -> Session | None:
+        session = await self.db_session.get(Session, session_id)
+        if session is None:
+            return None
+
+        if title is not None:
+            normalized_title = title.strip()
+            session.title = normalized_title or None
+        if is_active is not None:
+            session.is_active = is_active
+
+        await self.db_session.commit()
+        await self.db_session.refresh(session)
+        return session
+
+    async def archive_session(self, session_id: str) -> Session | None:
+        session = await self.db_session.get(Session, session_id)
+        if session is None:
+            return None
+        session.is_active = 0
+        await self.db_session.commit()
+        await self.db_session.refresh(session)
+        return session
+
+    async def restore_session(self, session_id: str) -> Session | None:
+        session = await self.db_session.get(Session, session_id)
+        if session is None:
+            return None
+        session.is_active = 1
+        await self.db_session.commit()
+        await self.db_session.refresh(session)
+        return session
+
+    async def delete_session_permanently(self, session_id: str) -> bool | None:
+        session = await self.db_session.get(Session, session_id)
+        if session is None:
+            return None
+        if session.is_active != 0:
+            return False
+        await self.db_session.delete(session)
+        await self.db_session.commit()
+        return True
+
+    async def count_session_messages(self, session_id: str) -> int:
+        statement = select(func.count(Message.id)).where(Message.session_id == session_id)
+        result = await self.db_session.execute(statement)
+        return int(result.scalar() or 0)
+
+    async def get_usage_summary(self, user_id: str) -> dict[str, int]:
+        statement = (
+            select(
+                func.count(Message.id),
+                func.coalesce(func.sum(Message.token_count), 0),
+                func.coalesce(
+                    func.sum(case((Message.role == "assistant", 1), else_=0)),
+                    0,
+                ),
+            )
+            .join(Session, Message.session_id == Session.id)
+            .where(Session.user_id == user_id)
+        )
+        result = await self.db_session.execute(statement)
+        total_messages, total_tokens, assistant_messages = result.one()
+        return {
+            "total_messages": int(total_messages or 0),
+            "assistant_messages": int(assistant_messages or 0),
+            "total_tokens": int(total_tokens or 0),
+        }
+
+    async def fetch_tool_activity(
+        self,
+        *,
+        session_id: str | None = None,
+        limit: int = 20,
+    ) -> list[Message]:
+        statement: Select[tuple[Message]] = (
+            select(Message)
+            .where(Message.tool_name.is_not(None))
+            .order_by(desc(Message.created_at))
+            .limit(limit)
+        )
+        if session_id:
+            statement = statement.where(Message.session_id == session_id)
+        result = await self.db_session.execute(statement)
+        return result.scalars().all()
+
+    async def get_user_profile(self, user_id: str) -> dict[str, Any]:
+        key = f"user_profile:{user_id}"
+        statement: Select[tuple[Metadata]] = (
+            select(Metadata)
+            .where(Metadata.key == key)
+            .order_by(desc(Metadata.created_at))
+            .limit(1)
+        )
+        result = await self.db_session.execute(statement)
+        entry = result.scalars().first()
+        if entry is None:
+            return {}
+        try:
+            return json.loads(entry.value)
+        except json.JSONDecodeError:
+            return {}
+
+    async def upsert_user_profile(self, user_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+        key = f"user_profile:{user_id}"
+        statement: Select[tuple[Metadata]] = (
+            select(Metadata)
+            .where(Metadata.key == key)
+            .order_by(desc(Metadata.created_at))
+            .limit(1)
+        )
+        result = await self.db_session.execute(statement)
+        entry = result.scalars().first()
+        payload = json.dumps(profile, ensure_ascii=True)
+        if entry is None:
+            entry = Metadata(
+                key=key,
+                value=payload,
+                value_type="json",
+            )
+            self.db_session.add(entry)
+        else:
+            entry.value = payload
+            entry.value_type = "json"
+        await self.db_session.commit()
+        return profile
+
+    async def set_message_feedback(self, message_id: str, value: str) -> str | None:
+        message = await self.db_session.get(Message, message_id)
+        if message is None:
+            return None
+
+        key = f"message_feedback:{message_id}"
+        statement: Select[tuple[Metadata]] = (
+            select(Metadata)
+            .where(Metadata.key == key)
+            .order_by(desc(Metadata.created_at))
+            .limit(1)
+        )
+        result = await self.db_session.execute(statement)
+        entry = result.scalars().first()
+        if entry is None:
+            entry = Metadata(
+                session_id=message.session_id,
+                message_id=message_id,
+                key=key,
+                value=value,
+                value_type="text",
+            )
+            self.db_session.add(entry)
+        else:
+            entry.value = value
+            entry.value_type = "text"
+        await self.db_session.commit()
+        return value
+
+    async def get_message_feedback(self, message_id: str) -> str | None:
+        key = f"message_feedback:{message_id}"
+        statement: Select[tuple[Metadata]] = (
+            select(Metadata)
+            .where(Metadata.key == key)
+            .order_by(desc(Metadata.created_at))
+            .limit(1)
+        )
+        result = await self.db_session.execute(statement)
+        entry = result.scalars().first()
+        return entry.value if entry is not None else None
 
     def serialize_messages(
         self, messages: list[Message], *, max_items: int | None = None

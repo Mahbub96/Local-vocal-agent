@@ -11,6 +11,8 @@ langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-ollama>=0.2.0
 duckduckgo-search>=6.2.11
+ddgs>=7.2.1
 faster-whisper>=1.0.3
 TTS>=0.22.0
 python-multipart>=0.0.9
+psutil

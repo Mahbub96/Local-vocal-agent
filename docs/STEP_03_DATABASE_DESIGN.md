@@ -99,7 +99,7 @@ CREATE TABLE metadata (
 #### Examples
 
 - `key = 'intent'`, `value = 'real_time_query'`
-- `key = 'source'`, `value = 'duckduckgo'`
+- `key = 'source'`, `value = 'google_news_rss'`
 - `key = 'embedding_status'`, `value = 'completed'`
 - `key = 'audio_path'`, `value = '/tmp/response_123.wav'`
 
