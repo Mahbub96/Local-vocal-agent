@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import get_settings
@@ -33,20 +35,28 @@ class VoiceService:
         suffix = Path(filename).suffix or ".wav"
         input_path = settings.upload_dir / f"{uuid4().hex}{suffix}"
         input_path.write_bytes(audio_bytes)
-
-        transcript = await self.stt_service.transcribe(input_path)
-        chat_result = await self.chat_service.handle_chat(
-            message=transcript,
-            session_id=session_id,
-            user_id=user_id,
-            include_tts=True,
-            defer_tts=True,
-        )
-        return VoiceChatResponse(
-            session_id=chat_result.session_id,
-            transcript=transcript,
-            response=chat_result.response,
-            used_memory=chat_result.used_memory,
-            used_internet=chat_result.used_internet,
-            audio_path=chat_result.audio_path,
-        )
+        try:
+            transcript = await self.stt_service.transcribe(input_path)
+            if not transcript:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Unable to extract text from audio. Please provide clearer speech.",
+                )
+            chat_result = await self.chat_service.handle_chat(
+                message=transcript,
+                session_id=session_id,
+                user_id=user_id,
+                include_tts=True,
+                defer_tts=True,
+            )
+            return VoiceChatResponse(
+                session_id=chat_result.session_id,
+                transcript=transcript,
+                response=chat_result.response,
+                used_memory=chat_result.used_memory,
+                used_internet=chat_result.used_internet,
+                audio_path=chat_result.audio_path,
+            )
+        finally:
+            with contextlib.suppress(OSError):
+                input_path.unlink()

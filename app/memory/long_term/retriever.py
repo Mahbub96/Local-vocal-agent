@@ -44,12 +44,15 @@ class LongTermMemoryRetriever:
     ) -> list[SemanticMemoryMatch]:
         query_embedding = await self.embedding_service.embed_query(query)
         query_filter = {"session_id": session_id} if session_id else None
-        result = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k or settings.memory_top_k,
-            where=query_filter,
-            include=["metadatas", "distances"],
-        )
+        try:
+            result = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k or settings.memory_top_k,
+                where=query_filter,
+                include=["metadatas", "distances"],
+            )
+        except Exception:
+            return []
 
         ids = result.get("ids", [[]])[0]
         distances = result.get("distances", [[]])[0]

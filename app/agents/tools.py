@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-from typing import Callable
+import logging
 
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
 from app.memory.long_term.retriever import LongTermMemoryRetriever
-from app.services.memory_service import MemoryService
 from app.integrations.search.duckduckgo import DuckDuckGoSearchClient
+
+logger = logging.getLogger(__name__)
 
 
 class MemorySearchInput(BaseModel):
@@ -26,7 +27,12 @@ class WebSearchInput(BaseModel):
 
 def build_memory_search_tool(retriever: LongTermMemoryRetriever) -> StructuredTool:
     async def _memory_search(query: str, session_id: str | None = None, top_k: int = 5) -> str:
-        matches = await retriever.search(query, top_k=top_k, session_id=session_id)
+        safe_top_k = max(1, min(top_k, 20))
+        try:
+            matches = await retriever.search(query, top_k=safe_top_k, session_id=session_id)
+        except Exception as exc:
+            logger.exception("Memory search tool failed: %s", exc)
+            return json.dumps([], ensure_ascii=True)
         payload = [
             {
                 "message_id": match.message.id,
@@ -52,7 +58,12 @@ def build_memory_search_tool(retriever: LongTermMemoryRetriever) -> StructuredTo
 
 def build_web_search_tool(search_client: DuckDuckGoSearchClient) -> StructuredTool:
     async def _web_search(query: str, max_results: int = 5) -> str:
-        results = await search_client.search(query, max_results=max_results)
+        safe_max_results = max(1, min(max_results, 10))
+        try:
+            results = await search_client.search(query, max_results=safe_max_results)
+        except Exception as exc:
+            logger.exception("Internet search tool failed: %s", exc)
+            return json.dumps([], ensure_ascii=True)
         return json.dumps(results, ensure_ascii=True)
 
     return StructuredTool.from_function(

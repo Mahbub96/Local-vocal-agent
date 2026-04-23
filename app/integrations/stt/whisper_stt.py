@@ -29,5 +29,11 @@ class WhisperSTTService:
 
     def _transcribe_sync(self, audio_path: Path) -> str:
         model = self._get_model()
-        segments, _info = model.transcribe(str(audio_path))
+        segments, _info = model.transcribe(
+            str(audio_path),
+            beam_size=settings.stt_beam_size,
+            temperature=settings.stt_temperature,
+            vad_filter=settings.stt_vad_filter,
+            vad_parameters={"min_silence_duration_ms": settings.stt_vad_min_silence_ms},
+        )
         return " ".join(segment.text.strip() for segment in segments).strip()

@@ -26,7 +26,8 @@ class ShortTermMemoryStore:
             self._cache[session_id].append(message)
 
     def get(self, session_id: str) -> list[dict[str, str]]:
-        return list(self._cache[session_id])
+        cached = self._cache.get(session_id)
+        return list(cached) if cached is not None else []
 
     def clear(self, session_id: str) -> None:
         self._cache.pop(session_id, None)

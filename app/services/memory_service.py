@@ -119,10 +119,14 @@ class MemoryService:
                 for message in recent_messages
             ]
 
+        long_term_context = self._prepare_long_term_context(
+            short_term_messages=short_term_messages,
+            long_term_messages=long_term_messages or [],
+        )
         return MemoryContext(
             session_id=session_id,
             short_term_messages=short_term_messages,
-            long_term_messages=long_term_messages or [],
+            long_term_messages=long_term_context,
         )
 
     async def fetch_messages_by_ids(self, message_ids: list[str]) -> list[Message]:
@@ -149,7 +153,7 @@ class MemoryService:
         result = await self.db_session.execute(statement)
         return result.scalars().all()
 
-    async def serialize_messages(
+    def serialize_messages(
         self, messages: list[Message], *, max_items: int | None = None
     ) -> list[dict[str, Any]]:
         subset = messages[-max_items:] if max_items else messages
@@ -176,3 +180,32 @@ class MemoryService:
         result = await self.db_session.execute(statement)
         max_sequence = result.scalar_one_or_none()
         return (max_sequence or 0) + 1
+
+    def _prepare_long_term_context(
+        self,
+        *,
+        short_term_messages: list[dict[str, str]],
+        long_term_messages: list[Message],
+    ) -> list[Message]:
+        """Deduplicate and cap semantic memory before prompt injection."""
+        if not long_term_messages:
+            return []
+
+        short_term_signatures = {
+            f"{message['role']}::{message['content'].strip()}"
+            for message in short_term_messages
+            if message.get("content")
+        }
+        deduped: list[Message] = []
+        seen_ids: set[str] = set()
+        for message in long_term_messages:
+            if message.id in seen_ids:
+                continue
+            signature = f"{message.role}::{message.content.strip()}"
+            if signature in short_term_signatures:
+                continue
+            seen_ids.add(message.id)
+            deduped.append(message)
+            if len(deduped) >= settings.memory_top_k:
+                break
+        return deduped

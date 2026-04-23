@@ -15,8 +15,9 @@ class OllamaChatModel:
         self._model = ChatOllama(
             base_url=settings.ollama_base_url,
             model=settings.ollama_model,
-            temperature=0.2,
+            temperature=settings.ollama_temperature,
             request_timeout=settings.ollama_request_timeout,
+            num_ctx=settings.ollama_num_ctx,
         )
 
     @property

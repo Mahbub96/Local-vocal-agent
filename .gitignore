@@ -19,6 +19,8 @@ ENV/
 
 # Environment files
 .env
+.env.local
+.env.*.local
 
 # Build artifacts
 build/
@@ -29,6 +31,7 @@ pip-wheel-metadata/
 
 # IDE / OS
 .DS_Store
+._*
 .idea/
 .vscode/
 
@@ -46,6 +49,10 @@ storage/
 
 # Logs
 *.log
+
+# External volume image artifacts
+*.sparseimage
+*.sparsebundle
 
 # Jupyter
 .ipynb_checkpoints/

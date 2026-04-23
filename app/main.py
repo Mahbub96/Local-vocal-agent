@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.core.settings import get_settings
 from app.database.initializer import initialize_datastores
+from app.database.sqlite.session import close_db_engine
 
 
 settings = get_settings()
@@ -16,6 +17,7 @@ settings = get_settings()
 async def lifespan(_app: FastAPI):
     await initialize_datastores()
     yield
+    await close_db_engine()
 
 
 app = FastAPI(

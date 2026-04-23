@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import httpx
 
 from app.core.settings import get_settings
@@ -24,11 +25,19 @@ class OllamaEmbeddingClient:
 
     async def embed_text(self, text: str) -> list[float]:
         payload = {"model": self.model, "input": text}
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(f"{self.base_url}/api/embed", json=payload)
-            response.raise_for_status()
-        data = response.json()
-        embeddings = data.get("embeddings") or []
-        if not embeddings:
-            raise ValueError("Ollama embedding response did not contain embeddings.")
-        return embeddings[0]
+        attempts = max(1, settings.ollama_retry_attempts)
+        for attempt in range(attempts):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(f"{self.base_url}/api/embed", json=payload)
+                    response.raise_for_status()
+                data = response.json()
+                embeddings = data.get("embeddings") or []
+                if not embeddings:
+                    raise ValueError("Ollama embedding response did not contain embeddings.")
+                return embeddings[0]
+            except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadError):
+                if attempt == attempts - 1:
+                    raise
+                delay = settings.ollama_retry_base_delay * (2**attempt)
+                await asyncio.sleep(delay)

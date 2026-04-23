@@ -15,7 +15,8 @@ class EmbeddingService:
         self.collection = get_memory_collection()
 
     async def embed_query(self, query: str) -> list[float]:
-        return await self.embedding_client.embed_text(query.strip())
+        normalized_query = self._normalize_text(query)
+        return await self.embedding_client.embed_text(normalized_query)
 
     async def index_message(
         self,
@@ -25,6 +26,8 @@ class EmbeddingService:
         extra_metadata: dict[str, Any] | None = None,
     ) -> None:
         document = self._build_document(message)
+        if not document:
+            return
         embedding = await self.embedding_client.embed_text(document)
         metadata = {
             "message_id": message.id,
@@ -36,6 +39,7 @@ class EmbeddingService:
             "source": source,
             "has_tool_usage": bool(message.tool_name),
             "tool_name": message.tool_name,
+            "topic": self._infer_topic(message.content),
         }
         if extra_metadata:
             metadata.update(extra_metadata)
@@ -48,10 +52,24 @@ class EmbeddingService:
         )
 
     def _build_document(self, message: Message) -> str:
+        normalized_content = self._normalize_text(message.content)
+        if not normalized_content:
+            return ""
         return "\n".join(
             [
                 f"Session: {message.session_id}",
                 f"Role: {message.role}",
-                f"Message: {message.content}",
+                f"Message: {normalized_content}",
             ]
         )
+
+    def _normalize_text(self, text: str) -> str:
+        # Keep embeddings stable by trimming noisy whitespace.
+        return " ".join(text.strip().split())
+
+    def _infer_topic(self, text: str, *, max_words: int = 6) -> str:
+        normalized = self._normalize_text(text)
+        if not normalized:
+            return "general"
+        words = normalized.split(" ")
+        return " ".join(words[:max_words]).lower()

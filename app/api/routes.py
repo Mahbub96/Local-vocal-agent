@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dependencies import get_async_db_session
 from app.memory.long_term.retriever import LongTermMemoryRetriever
 from app.schemas.chat import ChatRequest, ChatResponse
-from app.schemas.memory import MemorySearchMatch, MemorySearchRequest, MemorySearchResponse
+from app.schemas.memory import MemorySearchMatch, MemorySearchResponse
 from app.schemas.voice import VoiceChatResponse
 from app.services.chat_service import ChatService
 from app.services.embedding_service import EmbeddingService
@@ -17,26 +19,35 @@ from app.services.voice_service import VoiceService
 router = APIRouter()
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", responses={422: {"description": "Validation or business-rule error."}})
 async def chat(
     payload: ChatRequest,
-    db_session: AsyncSession = Depends(get_async_db_session),
+    db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
 ) -> ChatResponse:
     service = ChatService(db_session)
-    return await service.handle_chat(
-        message=payload.message,
-        session_id=payload.session_id,
-        user_id=payload.user_id,
-        include_tts=payload.include_tts,
-    )
+    try:
+        return await service.handle_chat(
+            message=payload.message,
+            session_id=payload.session_id,
+            user_id=payload.user_id,
+            include_tts=payload.include_tts,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/voice-chat", response_model=VoiceChatResponse)
+@router.post(
+    "/voice-chat",
+    responses={
+        400: {"description": "Uploaded audio file is empty."},
+        422: {"description": "Unable to extract text from audio."},
+    },
+)
 async def voice_chat(
-    file: UploadFile = File(...),
-    session_id: str | None = Form(default=None),
-    user_id: str | None = Form(default=None),
-    db_session: AsyncSession = Depends(get_async_db_session),
+    file: Annotated[UploadFile, File(...)],
+    db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
+    session_id: Annotated[str | None, Form()] = None,
+    user_id: Annotated[str | None, Form()] = None,
 ) -> VoiceChatResponse:
     audio_bytes = await file.read()
     if not audio_bytes:
@@ -51,10 +62,12 @@ async def voice_chat(
     )
 
 
-@router.post("/memory/search", response_model=MemorySearchResponse)
+@router.get("/memory/search")
 async def memory_search(
-    payload: MemorySearchRequest,
-    db_session: AsyncSession = Depends(get_async_db_session),
+    query: Annotated[str, Query(min_length=1)],
+    db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
+    top_k: Annotated[int, Query(ge=1, le=20)] = 5,
+    session_id: Annotated[str | None, Query()] = None,
 ) -> MemorySearchResponse:
     memory_service = MemoryService(db_session)
     embedding_service = EmbeddingService()
@@ -63,9 +76,9 @@ async def memory_search(
         memory_service=memory_service,
     )
     matches = await retriever.search(
-        payload.query,
-        top_k=payload.top_k,
-        session_id=payload.session_id,
+        query,
+        top_k=top_k,
+        session_id=session_id,
     )
     return MemorySearchResponse(
         matches=[
