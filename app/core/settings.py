@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
@@ -8,6 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+_log = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -91,9 +94,20 @@ class Settings(BaseSettings):
     def ensure_directories(self) -> None:
         """Create runtime directories needed by the application."""
         if self.app_storage_path is not None and not self.app_storage_path.exists():
-            raise RuntimeError(
-                f"Configured APP_STORAGE_PATH is not mounted or missing: {self.app_storage_path}"
-            )
+            env = (self.app_env or "").strip().lower()
+            if env in {"development", "dev", "local", "test"}:
+                miss = self.app_storage_path
+                self.app_storage_path = BASE_DIR / "storage"
+                _log.warning(
+                    "APP_STORAGE_PATH %s does not exist (e.g. volume not mounted). "
+                    "Using %s for relative DB/chroma paths.",
+                    miss,
+                    self.app_storage_path,
+                )
+            else:
+                raise RuntimeError(
+                    f"Configured APP_STORAGE_PATH is not mounted or missing: {self.app_storage_path}"
+                )
 
         self.sqlite_path = self._resolve_storage_path(self.sqlite_path)
         self.chroma_path = self._resolve_storage_path(self.chroma_path)

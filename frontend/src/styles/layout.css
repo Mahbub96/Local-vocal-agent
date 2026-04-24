@@ -70,13 +70,13 @@
 }
 
 .topbar-dots__r {
-  background: #ff5f57;
+  background: var(--c-chrome-dot-r);
 }
 .topbar-dots__y {
-  background: #febc2e;
+  background: var(--c-chrome-dot-y);
 }
 .topbar-dots__g {
-  background: #28c840;
+  background: var(--c-chrome-dot-g);
 }
 
 .topbar-brand {

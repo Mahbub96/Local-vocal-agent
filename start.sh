@@ -9,6 +9,11 @@ BACKEND_PORT="${BACKEND_PORT:-8000}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 BACKEND_VENV_PYTHON="${BACKEND_VENV_PYTHON:-$HOME/.venvs/localVocalAgent/bin/python}"
+OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:7b}"
+EMBEDDING_MODEL="${EMBEDDING_MODEL:-nomic-embed-text}"
+AUTO_FIX_OLLAMA="${AUTO_FIX_OLLAMA:-1}"
+AUTO_START_OLLAMA="${AUTO_START_OLLAMA:-1}"
 
 if [[ ! -d "$FRONTEND_DIR" ]]; then
   echo "Error: frontend directory not found at $FRONTEND_DIR"
@@ -28,6 +33,11 @@ fi
 
 if ! command -v npm >/dev/null 2>&1; then
   echo "Error: npm is not installed or not in PATH."
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "Error: curl is not installed or not in PATH."
   exit 1
 fi
 
@@ -67,6 +77,80 @@ kill_port_if_busy() {
   fi
 }
 
+wait_for_ollama() {
+  local retries="${1:-25}"
+  local delay_s="${2:-1}"
+  local url="${OLLAMA_BASE_URL%/}/api/tags"
+  for ((i = 1; i <= retries; i++)); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$delay_s"
+  done
+  return 1
+}
+
+ensure_ollama_running() {
+  if wait_for_ollama 1 0; then
+    return 0
+  fi
+
+  if [[ "$AUTO_START_OLLAMA" != "1" ]]; then
+    echo "Error: Ollama is not reachable at $OLLAMA_BASE_URL."
+    echo "Start it manually (e.g. \`ollama serve\`) or set AUTO_START_OLLAMA=1."
+    exit 1
+  fi
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "Error: ollama CLI not found, cannot auto-start service."
+    exit 1
+  fi
+
+  echo "Ollama not reachable. Starting ollama service..."
+  ollama serve >/dev/null 2>&1 &
+  OLLAMA_SERVE_PID=$!
+  if ! wait_for_ollama 25 1; then
+    echo "Error: Failed to start Ollama at $OLLAMA_BASE_URL."
+    exit 1
+  fi
+}
+
+ensure_ollama_model() {
+  local model="$1"
+  local tag_url="${OLLAMA_BASE_URL%/}/api/tags"
+  local code
+  code="$(curl -sS -o /tmp/ollama-tags.json -w "%{http_code}" "$tag_url" || true)"
+  if [[ "$code" != "200" ]]; then
+    echo "Error: unable to query Ollama model list at $tag_url (HTTP $code)"
+    exit 1
+  fi
+
+  if "$PYTHON_BIN" - "$model" <<'PY'
+import json
+import sys
+
+model = sys.argv[1]
+with open("/tmp/ollama-tags.json", "r", encoding="utf-8") as fh:
+    payload = json.load(fh)
+names = {m.get("name", "") for m in payload.get("models", [])}
+base = {name.split(":", 1)[0] for name in names if name}
+ok = model in names or model in base
+raise SystemExit(0 if ok else 1)
+PY
+  then
+    return 0
+  fi
+
+  if [[ "$AUTO_FIX_OLLAMA" != "1" ]]; then
+    echo "Error: required model '$model' is missing in Ollama."
+    echo "Install it with: ollama pull $model"
+    exit 1
+  fi
+
+  echo "Model '$model' missing. Pulling..."
+  ollama pull "$model"
+}
+
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -75,6 +159,7 @@ cleanup() {
     echo "Stopping services..."
     [[ -n "${BACKEND_PID:-}" ]] && kill "$BACKEND_PID" 2>/dev/null || true
     [[ -n "${FRONTEND_PID:-}" ]] && kill "$FRONTEND_PID" 2>/dev/null || true
+    [[ -n "${OLLAMA_SERVE_PID:-}" ]] && kill "$OLLAMA_SERVE_PID" 2>/dev/null || true
     wait 2>/dev/null || true
   fi
   exit "$exit_code"
@@ -84,6 +169,10 @@ trap cleanup EXIT INT TERM
 
 kill_port_if_busy "$BACKEND_PORT"
 kill_port_if_busy "$FRONTEND_PORT"
+
+ensure_ollama_running
+ensure_ollama_model "$EMBEDDING_MODEL"
+ensure_ollama_model "$OLLAMA_MODEL"
 
 echo "Starting backend on http://$BACKEND_HOST:$BACKEND_PORT ..."
 "$PYTHON_BIN" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" &

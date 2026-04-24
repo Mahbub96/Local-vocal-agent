@@ -1,9 +1,9 @@
 /* Aurora — cyberpunk / dark: single source for all CSS custom properties. */
 
 const c = {
-  /* Reference canvas */
-  pageBg: "#0a0a0f",
-  cardTop: "#0e1018",
+  /* Canvas — spec: #05050a, panels #0d0e1a */
+  pageBg: "#05050a",
+  cardTop: "#0d0e1a",
   cardBottom: "#0a0b12",
   railStart: "#060712",
   railEnd: "#0a0c14",
@@ -55,10 +55,46 @@ const c = {
   voiceWaveC: "#9747ff",
   voiceOrbitCyan: "#40c9ff",
   voiceOrbitPurple: "#9747ff",
-  voiceCardBg: "#0c0d14",
+  voiceCardBg: "#0d0e1a",
+  /** Hairline + lift (one token for card edges) */
+  hairline: "rgba(255, 255, 255, 0.06)",
+  /** Subtle top bevel on nested panels */
+  cardInnerTop: "rgba(255, 255, 255, 0.03)",
   /** Panel lift — separate from generic cards */
   voiceCardShadow:
-    "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 28px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06)",
+    "0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+  /** Through-orb frequency line (cyan → purple) */
+  voiceOrbitLine:
+    "linear-gradient(90deg, rgba(64, 201, 255, 0) 0%, #22d3ee 10%, #40c9ff 30%, #a78bfa 55%, #c084fc 75%, rgba(192, 132, 252, 0) 100%)",
+  voiceOrbitLineGlow: "0 0 14px rgba(64, 201, 255, 0.32), 0 0 20px rgba(168, 85, 247, 0.22)",
+  /** macOS-style titlebar dots (topbar) */
+  chromeDotR: "#ff5f57",
+  chromeDotY: "#febc2e",
+  chromeDotG: "#28c840",
+  voiceWfInIdle: "rgba(64, 201, 255, 0.18)",
+  voiceWfOutIdle: "rgba(192, 132, 252, 0.16)",
+  voiceWfInOn: "linear-gradient(180deg, #5eead4, #3b82f6)",
+  voiceWfOutOn: "linear-gradient(180deg, #c084fc, #a855f7)",
+  voiceWfInGlow: "0 0 8px rgba(64, 201, 255, 0.45)",
+  voiceWfOutGlow: "0 0 8px rgba(168, 85, 247, 0.4)",
+  voiceIcText: "#e2e8f0",
+  voiceIcBtnBg:
+    "linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02))",
+  voiceIcBtnBorder: "rgba(255, 255, 255, 0.1)",
+  voiceIcBtnShade: "0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 4px 16px rgba(0, 0, 0, 0.35)",
+  voiceRingHairline: "rgba(255, 255, 255, 0.08)",
+  voiceDialInset: "inset 0 0 0 1px rgba(0, 0, 0, 0.35)",
+  voiceOutGlass:
+    "linear-gradient(145deg, rgba(64, 201, 255, 0.04) 0%, transparent 50%)",
+  voiceOutInset: "0 0 0 1px rgba(0, 0, 0, 0.35) inset",
+  voiceMeterOn: "linear-gradient(180deg, #7dd3fc, #3b82f6)",
+  voiceMeterGlow: "0 0 8px rgba(59, 130, 246, 0.4)",
+  /** Live dot pulse (Ready) */
+  voicePulse0: "rgba(0, 200, 83, 0.45)",
+  voicePulse1: "rgba(0, 200, 83, 0.12)",
+  /** Language pill (foot row) */
+  voiceLangPillBg: "rgba(255, 255, 255, 0.04)",
+  voiceLangPillInset: "0 0 0 1px rgba(0, 0, 0, 0.25) inset",
   voiceWaveLineGlow: "0 0 10px rgba(64, 201, 255, 0.22)",
   audioBarOnGlow: "0 0 6px rgba(64, 201, 255, 0.28)",
   voiceOutPanel: "#11141d",
@@ -120,6 +156,25 @@ const c = {
   bubbleUserFill: "rgba(139, 92, 246, 0.1)",
   bubbleAsstFill: "rgba(59, 130, 246, 0.08)",
   bubbleUserGradientEnd: "#6d28d9",
+  /** Message panel (reference: chat card + composer) */
+  chatBubbleUserBg:
+    "linear-gradient(165deg, rgba(42, 55, 105, 0.55), rgba(10, 16, 32, 0.92))",
+  chatBubbleAsstBg:
+    "linear-gradient(165deg, rgba(16, 34, 64, 0.6), rgba(6, 12, 24, 0.94))",
+  chatBubbleUserBorder: "rgba(120, 165, 255, 0.32)",
+  chatBubbleAsstBorder: "rgba(64, 201, 255, 0.22)",
+  chatNameUser: "#e8ecff",
+  chatNameAsst: "#7dd3fc",
+  chatBody: "#e8ecf4",
+  chatAvatarUserFill: "linear-gradient(180deg, #4a56a8, #2c3a78)",
+  chatAvatarUserIcon: "rgba(255, 255, 255, 0.95)",
+  chatDayPillBg: "rgba(255, 255, 255, 0.04)",
+  chatBubbleInset: "0 0 0 1px rgba(0, 0, 0, 0.4) inset",
+  chatComposerInset: "0 0 0 1px rgba(0, 0, 0, 0.35) inset",
+  chatComposerSurface: "rgba(6, 10, 20, 0.92)",
+  chatComposerToolIcon: "rgba(148, 163, 184, 0.9)",
+  /** Send — cyan → blue → purple (ref) */
+  chatSendGrad: "linear-gradient(135deg, #22d3ee, #3b82f6, #8b5cf6)",
 } as const;
 
 const effect = {
@@ -151,12 +206,18 @@ const layout = {
   topIconGap: "12px",
   cardRadius: "14px",
   cardPad: "20px",
-  /** Voice panel (reference ~12px cards) */
+  /** Voice — match reference rhythm */
   voiceCardRadius: "14px",
   voiceOutRadius: "12px",
+  /** Orb + spectrum row */
   voiceRingOuter: "200px",
   voiceRingInner: "128px",
+  voiceOrbitRowMinH: "120px",
+  /** Hero: status | stage | out */
+  voiceMainCols: "minmax(148px, 0.95fr) minmax(300px, 1.5fr) minmax(220px, 1.1fr)",
   voiceOutCol: "minmax(220px, 280px)",
+  voiceHeroGCol: "20px",
+  voiceHeroGRow: "24px",
 } as const;
 
 const railActiveBg = `linear-gradient(90deg, ${c.railActiveA}, ${c.railActiveB})`;
@@ -221,6 +282,33 @@ export const themeVars: Record<string, string> = (() => {
     "--c-voice-meta": c.voiceMeta,
     "--c-voice-out-surface": c.voiceOutSurface,
     "--c-voice-out-border": c.voiceOutBorder,
+    "--c-hairline": c.hairline,
+    "--c-card-inner-top": c.cardInnerTop,
+    "--c-voice-orbit-line": c.voiceOrbitLine,
+    "--c-voice-orbit-line-glow": c.voiceOrbitLineGlow,
+    "--c-chrome-dot-r": c.chromeDotR,
+    "--c-chrome-dot-y": c.chromeDotY,
+    "--c-chrome-dot-g": c.chromeDotG,
+    "--c-voice-wf-in-idle": c.voiceWfInIdle,
+    "--c-voice-wf-out-idle": c.voiceWfOutIdle,
+    "--c-voice-wf-in-on": c.voiceWfInOn,
+    "--c-voice-wf-out-on": c.voiceWfOutOn,
+    "--c-voice-wf-in-glow": c.voiceWfInGlow,
+    "--c-voice-wf-out-glow": c.voiceWfOutGlow,
+    "--c-voice-ic-text": c.voiceIcText,
+    "--c-voice-ic-btn-bg": c.voiceIcBtnBg,
+    "--c-voice-ic-btn-border": c.voiceIcBtnBorder,
+    "--c-voice-ic-btn-shade": c.voiceIcBtnShade,
+    "--c-voice-ring-hairline": c.voiceRingHairline,
+    "--c-voice-dial-inset": c.voiceDialInset,
+    "--c-voice-out-glass": c.voiceOutGlass,
+    "--c-voice-out-inset": c.voiceOutInset,
+    "--c-voice-meter-on-grad": c.voiceMeterOn,
+    "--c-voice-meter-on-glow": c.voiceMeterGlow,
+    "--c-voice-pulse-0": c.voicePulse0,
+    "--c-voice-pulse-1": c.voicePulse1,
+    "--c-voice-lang-pill-bg": c.voiceLangPillBg,
+    "--c-voice-lang-pill-inset": c.voiceLangPillInset,
     "--c-voice-card-bg": c.voiceCardBg,
     "--c-voice-card-shadow": c.voiceCardShadow,
     "--c-voice-wave-line-glow": c.voiceWaveLineGlow,
@@ -273,6 +361,21 @@ export const themeVars: Record<string, string> = (() => {
     "--c-bubble-user-fill": c.bubbleUserFill,
     "--c-bubble-asst-fill": c.bubbleAsstFill,
     "--c-bubble-user-grad-end": c.bubbleUserGradientEnd,
+    "--c-chat-bubble-user-bg": c.chatBubbleUserBg,
+    "--c-chat-bubble-asst-bg": c.chatBubbleAsstBg,
+    "--c-chat-bubble-user-border": c.chatBubbleUserBorder,
+    "--c-chat-bubble-asst-border": c.chatBubbleAsstBorder,
+    "--c-chat-name-user": c.chatNameUser,
+    "--c-chat-name-asst": c.chatNameAsst,
+    "--c-chat-body": c.chatBody,
+    "--c-chat-avatar-user-fill": c.chatAvatarUserFill,
+    "--c-chat-avatar-user-icon": c.chatAvatarUserIcon,
+    "--c-chat-day-pill-bg": c.chatDayPillBg,
+    "--c-chat-bubble-inset": c.chatBubbleInset,
+    "--c-chat-composer-inset": c.chatComposerInset,
+    "--c-chat-composer-surface": c.chatComposerSurface,
+    "--c-chat-composer-tool-icon": c.chatComposerToolIcon,
+    "--c-chat-send-grad": c.chatSendGrad,
     "--layout-rail-w": layout.railW,
     "--layout-dashboard-pad": layout.dashboardPad,
     "--layout-content-gap": layout.contentGap,
@@ -288,6 +391,10 @@ export const themeVars: Record<string, string> = (() => {
     "--layout-voice-ring-outer": layout.voiceRingOuter,
     "--layout-voice-ring-inner": layout.voiceRingInner,
     "--layout-voice-out-col": layout.voiceOutCol,
+    "--layout-voice-orbit-min-h": layout.voiceOrbitRowMinH,
+    "--layout-voice-main-cols": layout.voiceMainCols,
+    "--layout-voice-hero-gcol": layout.voiceHeroGCol,
+    "--layout-voice-hero-grow": layout.voiceHeroGRow,
   };
   return m;
 })();

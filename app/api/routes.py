@@ -46,6 +46,7 @@ from app.schemas.ui import (
     VoiceStatusResponse,
 )
 from app.schemas.voice import VoiceChatResponse
+from app.agents.assistant_agent import ModelUnavailableError
 from app.services.chat_service import ChatService
 from app.services.embedding_service import EmbeddingService
 from app.services.memory_service import MemoryService
@@ -130,6 +131,8 @@ async def chat(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post(
