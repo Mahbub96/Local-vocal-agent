@@ -38,22 +38,31 @@ function StepIcon({ kind }: { kind: ReturnType<typeof getStatusLabel> }) {
 
 export function ThinkingPanel({ thinking }: ThinkingPanelProps) {
   const [open, setOpen] = useState(false);
-  const steps = thinking.slice(0, 8);
+  const steps = thinking.slice(0, 5);
 
   return (
-    <section className="aurora-glass rounded-3xl border border-white/10 p-4 md:p-5" aria-label="Thinking process">
-      <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold tracking-tight text-white">
+    <section
+      className="aurora-glass rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(12,20,44,0.9),rgba(8,13,28,0.92))] p-4 md:p-5"
+      aria-label="Thinking process"
+    >
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold tracking-tight text-white">
         <Brain className="size-[18px] shrink-0 text-[#00d2ff]/90" strokeWidth={2} aria-hidden />
         Thinking Process
       </h3>
-      <ul className="space-y-4">
+      <ul className="space-y-0 divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/8 bg-[#0b1226]/60">
         {steps.map((step) => {
           const k = getStatusLabel(step.status);
           const sub =
             step.detail ||
-            (k === "running" ? "Working…" : k === "pending" ? "Queued" : k === "skip" ? "Skipped for this request" : "Done");
+            (k === "running"
+              ? "Working..."
+              : k === "pending"
+                ? "Queued"
+                : k === "skip"
+                  ? "Skipped for this request."
+                  : "Done.");
           return (
-            <li key={step.key} className="flex gap-3">
+            <li key={step.key} className="flex gap-3 px-3 py-3">
               <StepIcon kind={k} />
               <div className="min-w-0 flex-1">
                 <p className={`text-sm font-medium leading-snug ${k === "pending" ? "text-white/45" : "text-white/90"}`}>
@@ -69,14 +78,14 @@ export function ThinkingPanel({ thinking }: ThinkingPanelProps) {
           );
         })}
         {steps.length === 0 ? (
-          <li className="text-sm text-white/45">Waiting for session activity.</li>
+          <li className="px-3 py-4 text-sm text-white/45">Waiting for session activity.</li>
         ) : null}
       </ul>
 
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="mt-4 flex w-full items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/3 py-2 text-xs font-medium text-white/55 transition hover:border-white/20 hover:bg-white/6 hover:text-white/80"
+        className="mt-3 flex w-full items-center justify-center gap-1 rounded-xl border border-white/12 bg-white/3 py-2 text-xs font-medium text-white/70 transition hover:border-white/20 hover:bg-white/6 hover:text-white/90"
         aria-expanded={open}
       >
         View Details

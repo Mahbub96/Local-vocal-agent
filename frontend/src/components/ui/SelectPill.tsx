@@ -34,7 +34,7 @@ export function SelectPill({
         {label}
       </label>
       <div className={cn("relative inline-flex w-full max-w-full items-center", className)}>
-        <div className="relative inline-flex w-full max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2.5 sm:inline-flex sm:w-auto sm:max-w-none sm:px-4">
+        <div className="relative inline-flex w-full max-w-full items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1.5 sm:inline-flex sm:w-auto sm:max-w-none sm:gap-2 sm:px-3 sm:py-2">
         {icon}
         <select
           id={id}

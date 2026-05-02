@@ -2,9 +2,13 @@ import { Globe } from "lucide-react";
 import { useId, useMemo } from "react";
 import { cn } from "../lib/cn";
 import type { VoiceCaptureMode } from "../hooks/useVoiceCapture";
-import { BarVisualizer, GlowDot, HeroSurface, SelectPill, StackHeading } from "./ui";
+import {
+  BarVisualizer,
+  GlowDot,
+  HeroSurface,
+  SelectPill,
+} from "./ui";
 import { VoiceOrb } from "./voice/VoiceOrb";
-import { VoiceOutputAside } from "./voice/VoiceOutputAside";
 import { VoiceTransport } from "./voice/VoiceTransport";
 import { shortVoiceStateLabel, titleFromVoiceState } from "./voice/voiceLabels";
 import { useVoiceLanguageOptions } from "./voice/voiceLanguage";
@@ -15,22 +19,23 @@ type VoicePanelProps = {
   voiceStatus: VoiceStatus | null;
   languageLabel: string;
   lastAssistantSnippet: string;
-  /** Live assistant text while streaming chat or TTS-synced voice caption. */
   liveAssistantOutput?: string;
   onLanguageChange?: (language: string) => void;
   captureMode: VoiceCaptureMode;
   onCaptureModeChange: (mode: VoiceCaptureMode) => void;
-  /** Local mic capture (browser) — drives orb + transport. */
   isListening?: boolean;
+  /** Hands-free: stream is open even between VAD segments — use for meter + live caption styling. */
+  voiceSessionHot?: boolean;
   voiceBusy?: boolean;
   onMicPrimary?: () => void;
   onVoiceInterrupt?: () => void;
-  /** Live caption from Web Speech API while recording. */
   liveUserText?: string;
-  /** RMS-based level (0–100) for input bars while recording. */
   micLevelLocal?: number;
+  /** Short-lived hint when voice was skipped (e.g. silent mode without wake name). */
+  gateHint?: string;
 };
 
+/** Voice card layout matches reference: header (listen | output title), waveform through orb, footer (lang | controls | output stack). */
 export function VoicePanel({
   voiceStatus,
   languageLabel,
@@ -40,27 +45,45 @@ export function VoicePanel({
   captureMode,
   onCaptureModeChange,
   isListening = false,
+  voiceSessionHot = false,
   voiceBusy = false,
   onMicPrimary,
   onVoiceInterrupt,
   liveUserText = "",
   micLevelLocal,
+  gateHint = "",
 }: VoicePanelProps) {
   const st = voiceStatus?.state;
   const s = st?.toLowerCase() ?? "idle";
   const serverLevel = Math.max(0, Math.min(100, voiceStatus?.audio_level ?? 0));
-  const level = isListening && micLevelLocal != null ? micLevelLocal : serverLevel;
+  const handsFree = captureMode === "always";
+  const segmentOrPushHot = isListening || (handsFree && voiceSessionHot);
+  const level =
+    segmentOrPushHot && micLevelLocal != null ? micLevelLocal : serverLevel;
   const langId = useId();
   const langOptions = useVoiceLanguageOptions(languageLabel);
-  const handsFree = captureMode === "always";
 
-  const barsIn = useLevelBars(20, level, 1);
+  /** Open mic stream (hands-free) alone should not look like “always listening” — only capture + server work states. */
+  const listenAnim =
+    s === "listening" ||
+    s === "transcribing" ||
+    s === "thinking" ||
+    s === "speaking" ||
+    isListening;
+
+  /** Reference UI: side waveforms stay visibly cyan / purple when idle (not washed-out gray). */
+  const waveLevel = useMemo(() => {
+    const active = listenAnim;
+    return active ? level : Math.max(level, 44);
+  }, [level, listenAnim]);
+
+  const barsIn = useLevelBars(24, waveLevel, 1);
+  const barsInMirror = useLevelBars(24, waveLevel, 2);
   const barsOut = useLevelBars(18, s === "speaking" ? level + 15 : level, 3);
 
-  const listenAnim = s === "listening" || s === "transcribing" || s === "speaking" || isListening;
-
   const hint = useMemo(() => {
-    if (voiceStatus?.detail && s !== "idle" && s !== "ready") return voiceStatus.detail;
+    if (voiceStatus?.detail && s !== "idle" && s !== "ready")
+      return voiceStatus.detail;
     if (s === "listening") return "I'm listening. How can I help you?";
     if (s === "idle" || s === "ready") return "How can I help you?";
     return "Processing…";
@@ -72,76 +95,150 @@ export function VoicePanel({
     return "I'm listening. How can I help you?";
   }, [liveUserText]);
 
-  const showLiveCaptionStyle = isListening && Boolean(liveUserText.trim());
+  const showLiveCaptionStyle =
+    Boolean(liveUserText.trim()) && !(handsFree && !isListening);
 
-  const panelTitle = useMemo(() => {
-    if (handsFree && isListening) return "Hands-free…";
+  const listenHeading = useMemo(() => {
+    /** Between VAD clips, show Hands-free even if Web Speech left stale interim text. */
+    if (handsFree && !isListening) return "Hands-free";
+    if (liveUserText.trim()) return "Listening…";
+    if (handsFree && isListening) return "Listening…";
     if (isListening) return "Listening…";
     return titleFromVoiceState(st);
-  }, [handsFree, isListening, st]);
+  }, [handsFree, isListening, st, liveUserText]);
 
-  const stackSubtitle = useMemo(() => {
+  const listenSub = useMemo(() => {
+    if (gateHint.trim()) return gateHint;
+    /** Match heading: between VAD segments, don’t let stale Web Speech text imply you’re still “in” listening. */
+    if (handsFree && !isListening) {
+      return "Between clips the mic rests until you speak again. Tap the mic to stop hands-free.";
+    }
+    if (liveUserText.trim()) return listeningSubtitle;
     if (handsFree && isListening) {
-      return "Speak anytime — segments send after a short pause. Tap the mic to stop.";
+      return "Speak anytime — segments send after a short pause. Tap the mic to stop hands-free.";
     }
     if (isListening) return listeningSubtitle;
     return hint;
-  }, [handsFree, isListening, listeningSubtitle, hint]);
+  }, [
+    gateHint,
+    handsFree,
+    isListening,
+    liveUserText,
+    listeningSubtitle,
+    hint,
+  ]);
 
   const outLine = useMemo(() => {
     const live = liveAssistantOutput.trim();
     if (live) {
-      return live.length > 220 ? `${live.slice(0, 217)}…` : live;
+      return live.length > 240 ? `${live.slice(0, 237)}…` : live;
     }
     if (s === "speaking" && lastAssistantSnippet.trim()) {
       const t = lastAssistantSnippet.trim();
-      return t.length > 220 ? `${t.slice(0, 217)}…` : t;
+      return t.length > 240 ? `${t.slice(0, 237)}…` : t;
     }
     if (s === "speaking" && !lastAssistantSnippet.trim()) return "…";
     return shortVoiceStateLabel(st);
   }, [s, lastAssistantSnippet, st, liveAssistantOutput]);
 
   const outputSubheading = useMemo(() => {
-    if (liveAssistantOutput.trim()) return "Live response";
-    if (s === "speaking") return "Speaking…";
+    if (s === "speaking") return "Speaking";
     return "Idle";
   }, [liveAssistantOutput, s]);
+  const outputStateLine = useMemo(() => {
+    if (s === "transcribing") return "Transcribing";
+    if (s === "thinking") return "Thinking";
+    if (s === "listening") return "Listening";
+    if (s === "speaking") return "Speaking";
+    return "Ready";
+  }, [s]);
 
-  const selectValue = langOptions.includes(languageLabel) ? languageLabel : langOptions[0]!;
+  const selectValue = langOptions.includes(languageLabel)
+    ? languageLabel
+    : langOptions[0]!;
 
   return (
-    <HeroSurface aria-label="Voice assistant">
-      <div className="relative grid grid-cols-1 gap-6 lg:min-h-[min(380px,52vh)] lg:grid-cols-12 lg:gap-5 lg:items-stretch xl:gap-8">
-        <div className="flex min-h-0 flex-col gap-4 lg:col-span-3">
-          <StackHeading
-            titleId="voice-title"
-            title={panelTitle}
-            subtitle={stackSubtitle}
-            subtitleAriaLive={isListening ? "polite" : "off"}
-            subtitleClassName={cn(
-              isListening && "min-h-[2.75rem]",
-              showLiveCaptionStyle && "text-base font-normal leading-relaxed text-white/95",
-              isListening && !showLiveCaptionStyle && "text-aurora-voice-caption",
-            )}
-            leading={
-              <GlowDot className="bg-aurora-voice-live shadow-[0_0_10px_rgba(34,197,94,0.9)]" aria-hidden />
-            }
-          />
-
-          <div className="mt-auto flex shrink-0 flex-col gap-3">
-            <label className="flex cursor-pointer select-none flex-wrap items-center gap-x-2.5 gap-y-1 rounded-aurora-xl border border-white/10 bg-white/4 px-3 py-2.5 text-xs text-white/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-white/15 hover:bg-white/6">
-              <input
-                type="checkbox"
-                className="size-4 shrink-0 rounded border-white/25 bg-white/5 text-[#00d2ff] focus:ring-[#00d2ff]/40"
-                checked={handsFree}
-                onChange={(e) => onCaptureModeChange(e.target.checked ? "always" : "push")}
-                disabled={voiceBusy && !handsFree}
+    <HeroSurface
+      aria-label="Voice assistant"
+      withRadialHighlight
+      className="rounded-md border border-white/6 bg-[#05070a]/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_22px_-10px_rgba(0,209,255,0.07)] backdrop-blur-sm"
+    >
+      <div className="relative z-10 flex min-h-0 flex-col gap-2">
+        {/* Row 1 — reference: listen left; Voice Output title only right (accent blue) */}
+        <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:items-start sm:gap-3">
+          <header className="min-w-0 space-y-0.5">
+            <div className="flex items-center gap-2">
+              <GlowDot
+                className="bg-[#39ff6b] shadow-[0_0_12px_rgba(57,255,107,0.75)]"
+                aria-hidden
               />
-              <span className="font-medium text-white/95">Always listen</span>
-              <span className="w-full text-[11px] text-white/45 sm:w-auto sm:pl-0">
-                Auto-send after you pause
+              <h2
+                id="voice-title"
+                className="font-sans text-[14px] font-semibold leading-tight text-white sm:text-[15px]"
+              >
+                {listenHeading}
+              </h2>
+            </div>
+            <p
+              className={cn(
+                "max-w-120 pl-[18px] text-[13px] leading-snug text-white/45 sm:pl-5",
+                showLiveCaptionStyle && "text-[13px] text-white/90 sm:text-[14px]",
+                gateHint.trim() && "text-amber-100/95",
+              )}
+              aria-live={
+                isListening || gateHint || liveUserText.trim()
+                  ? "polite"
+                  : undefined
+              }
+            >
+              {listenSub}
+            </p>
+          </header>
+
+          <header className="flex min-w-0 items-start justify-start sm:justify-end">
+            <div className="flex items-center gap-2">
+              <GlowDot
+                className="bg-[#00d1ff] shadow-[0_0_12px_rgba(0,209,255,0.75)]"
+                aria-hidden
+              />
+              <span className="font-sans text-[17px] font-semibold leading-tight text-[#00d1ff]">
+                Voice Output
               </span>
-            </label>
+            </div>
+          </header>
+        </div>
+
+        {/* Row 2 — single horizontal band: waveforms meet the orb (reference: passes through center) */}
+        <div className="relative flex w-full min-h-24 items-center justify-center gap-0 py-0 sm:min-h-28 md:min-h-30">
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-end pr-0 md:pr-0.5">
+            <BarVisualizer
+              bars={barsIn}
+              variant="cyan"
+              decorative
+              className="h-14 w-full max-w-none justify-end gap-px sm:h-16 md:h-[4.4rem]"
+            />
+          </div>
+          <div className="relative z-20 -mx-0.5 shrink-0 sm:-mx-1.5 md:-mx-2">
+            <VoiceOrb active={listenAnim} />
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-start pl-0 md:pl-0.5">
+            <BarVisualizer
+              bars={barsInMirror}
+              variant="magenta"
+              decorative
+              className="h-14 w-full max-w-none justify-start gap-px sm:h-16 md:h-[4.4rem]"
+            />
+          </div>
+        </div>
+
+        {/* Row 3 — language | controls | voice output stack (reference: output area on the right) */}
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-2",
+            "lg:grid-cols-[minmax(0,1fr)_auto_minmax(220px,280px)] lg:items-center lg:gap-2 xl:gap-3",
+          )}
+        >
+          <div className="order-2 flex min-w-0 justify-start lg:order-1 lg:max-w-[200px]">
             <SelectPill
               id={langId}
               label="Response language"
@@ -149,38 +246,58 @@ export function VoicePanel({
               options={langOptions}
               onChange={onLanguageChange}
               title="Preferred language"
-              icon={<Globe className="size-4 shrink-0 text-[#00d2ff]/90" aria-hidden />}
+              icon={
+                <Globe
+                  className="size-4 shrink-0 text-[#00d1ff]/90"
+                  aria-hidden
+                />
+              }
+              className="w-full"
             />
           </div>
-        </div>
 
-        <div className="flex min-h-0 flex-col items-center justify-center gap-6 lg:col-span-5 xl:col-span-6">
-          <div className="flex w-full flex-col items-center justify-center gap-5 sm:flex-row sm:gap-4 md:gap-6">
-            <VoiceOrb active={listenAnim} />
-            <div className="h-16 w-full min-w-0 max-w-md flex-1 sm:h-20 lg:max-w-[min(100%,20rem)]">
+          <div className="order-3 flex justify-center lg:order-2">
+            <VoiceTransport
+              handsFree={handsFree}
+              onMic={onMicPrimary}
+              onStop={onVoiceInterrupt}
+              onSettings={
+                onCaptureModeChange
+                  ? () => onCaptureModeChange(handsFree ? "push" : "always")
+                  : undefined
+              }
+              disabled={voiceBusy && !handsFree}
+              isRecording={segmentOrPushHot}
+            />
+          </div>
+
+          <div
+            className="order-1 space-y-1 rounded-xl border border-cyan-400/24 bg-black/60 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-md lg:order-3 lg:-mt-12"
+            aria-label="Voice output"
+          >
+            <p className="text-[14px] font-medium leading-tight text-white/82">
+              {outputSubheading}
+            </p>
+            <p className="text-[15px] font-semibold leading-tight text-white/96">
+              {outputStateLine}
+            </p>
+            {liveAssistantOutput.trim() ? (
+              <p className="line-clamp-2 min-h-8 text-pretty text-[12px] font-normal leading-snug text-white/75">
+                {outLine}
+              </p>
+            ) : <div className="min-h-8" />}
+            <div>
+              <span className="sr-only">Audio level</span>
               <BarVisualizer
-                bars={barsIn}
-                variant="cyan"
-                decorative
-                className="h-full w-full justify-start sm:justify-center"
+                bars={barsOut}
+                variant="gradient"
+                dimInactive
+                aria-label="Output level"
+                className="h-10 w-full justify-between"
               />
             </div>
           </div>
-          <VoiceTransport
-            handsFree={handsFree}
-            onMic={onMicPrimary}
-            onStop={onVoiceInterrupt}
-            disabled={voiceBusy && !handsFree}
-            isRecording={isListening}
-          />
         </div>
-
-        <VoiceOutputAside
-          className="lg:col-span-4 xl:col-span-3"
-          body={outLine}
-          meterBars={barsOut}
-          subheading={outputSubheading}
-        />
       </div>
     </HeroSurface>
   );

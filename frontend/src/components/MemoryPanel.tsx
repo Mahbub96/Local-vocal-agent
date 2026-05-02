@@ -30,6 +30,9 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
       profession: p.profession,
       project: p.project,
       preferences: p.preferences ?? [],
+      tts_playback_speed: p.tts_playback_speed ?? null,
+      assistant_wake_name: p.assistant_wake_name ?? null,
+      voice_listen_paused: p.voice_listen_paused === true,
     });
     setPrefsText((p.preferences ?? []).join(", "));
     setEditing(true);
@@ -48,7 +51,15 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
       .filter(Boolean);
     setSaving(true);
     try {
-      const next: Profile = { ...form, preferences: prefs };
+      const next: Profile = {
+        ...form,
+        preferences: prefs,
+        tts_playback_speed: form.tts_playback_speed ?? profile?.tts_playback_speed ?? null,
+        assistant_wake_name: form.assistant_wake_name ?? profile?.assistant_wake_name ?? null,
+        voice_listen_paused: form.voice_listen_paused === true,
+        voice_wake_session_active:
+          form.voice_listen_paused === true ? Boolean(profile?.voice_wake_session_active) : false,
+      };
       await onSave(next);
       setEditing(false);
     } finally {
@@ -58,12 +69,34 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
 
   const p = profile;
   const NA = "—";
+  const rows = [
+    { label: "Name", value: p?.name || NA },
+    { label: "Language", value: p?.language || NA },
+    { label: "Location", value: p?.location || NA },
+    { label: "Profession", value: p?.profession || NA },
+    { label: "Working on", value: p?.project || NA },
+    { label: "Preference", value: p?.preferences?.length ? p.preferences.join(", ") : NA },
+    {
+      label: "Speech speed",
+      value:
+        p?.tts_playback_speed != null && Number.isFinite(p.tts_playback_speed)
+          ? `${p.tts_playback_speed.toFixed(2)}×`
+          : NA,
+    },
+    { label: "Wake name", value: p?.assistant_wake_name?.trim() || NA },
+    { label: "Voice silent", value: p?.voice_listen_paused ? "On" : "Off" },
+    { label: "Wake follow-up", value: p?.voice_wake_session_active ? "Active" : NA },
+  ] as const;
 
   return (
-    <section className="aurora-glass rounded-3xl border border-white/10 p-4 md:p-5" aria-label="Memory">
+    <section
+      className="aurora-glass rounded-3xl border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,44,0.92),rgba(10,14,28,0.95))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(0,0,0,0.22)] md:p-5"
+      aria-label="Memory"
+    >
       <div className="mb-4 flex items-start justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold tracking-tight text-white">Known about you</h3>
+          <p className="mt-0.5 text-[11px] text-white/45">Persistent profile context used by chat and voice.</p>
           <p className="sr-only">Memory</p>
         </div>
         {editing ? (
@@ -85,14 +118,14 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
             <button
               type="button"
               onClick={startEdit}
-              className="text-white/55 underline-offset-4 transition hover:text-white"
+              className="text-xs text-white/55 underline-offset-4 transition hover:text-white"
             >
               View All
             </button>
             <button
               type="button"
               onClick={startEdit}
-              className="rounded-lg bg-white/6 px-2.5 py-1 text-cyan-200/90 ring-1 ring-white/10 transition hover:bg-white/10"
+              className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 text-xs text-cyan-100/95 ring-1 ring-cyan-200/15 transition hover:bg-cyan-300/14"
             >
               Edit
             </button>
@@ -151,33 +184,68 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
               placeholder="topic A, topic B"
             />
           </label>
+          <label className="block space-y-1">
+            <span className="aurora-field-label">Speech speed (playback)</span>
+            <input
+              className="aurora-field"
+              type="number"
+              step={0.05}
+              min={0.85}
+              max={2}
+              value={form.tts_playback_speed ?? ""}
+              placeholder="default (server)"
+              onChange={(e) => {
+                const v = e.target.value.trim();
+                if (v === "") {
+                  apply({ tts_playback_speed: null });
+                  return;
+                }
+                const n = Number(v);
+                apply({ tts_playback_speed: Number.isFinite(n) ? n : null });
+              }}
+            />
+            <span className="text-xs text-aurora-fg-muted">1.0 = normal; higher = faster. You can also say “speak slightly faster” in chat.</span>
+          </label>
+          <label className="block space-y-1">
+            <span className="aurora-field-label">Wake name (voice)</span>
+            <input
+              className="aurora-field"
+              value={form.assistant_wake_name ?? ""}
+              onChange={(e) => apply({ assistant_wake_name: e.target.value.trim() || null })}
+              placeholder="e.g. Aurora"
+            />
+            <span className="text-xs text-aurora-fg-muted">
+              Use at least 2 letters (single letters match inside normal words and break wake detection). When silent mode
+              is on, start speech with this name, or say “call yourself Luna” in chat or voice.
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-white/3 px-3 py-2.5">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 shrink-0 rounded border-white/25 accent-cyan-500"
+              checked={Boolean(form.voice_listen_paused)}
+              onChange={(e) => apply({ voice_listen_paused: e.target.checked })}
+            />
+            <span className="space-y-0.5">
+              <span className="block text-sm font-medium text-aurora-fg">Voice silent mode (wake name required)</span>
+              <span className="text-xs text-aurora-fg-muted">
+                When on, voice is ignored unless your wake name appears in the clip — same as saying “stop listening”.
+                Turn off here or say “resume listening”.
+              </span>
+            </span>
+          </label>
         </div>
       ) : (
-        <ul className="space-y-2.5 text-sm">
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Name</span>
-            <span className="text-aurora-fg/85">{p?.name || NA}</span>
-          </li>
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Language</span>
-            <span className="text-aurora-fg/85">{p?.language || NA}</span>
-          </li>
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Location</span>
-            <span className="text-aurora-fg/85">{p?.location || NA}</span>
-          </li>
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Profession</span>
-            <span className="text-aurora-fg/85">{p?.profession || NA}</span>
-          </li>
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Working on</span>
-            <span className="text-aurora-fg/85">{p?.project || NA}</span>
-          </li>
-          <li className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-            <span className="min-w-[5.5rem] text-xs text-aurora-fg-muted">Preference</span>
-            <span className="text-aurora-fg/85">{p?.preferences?.length ? p.preferences.join(", ") : NA}</span>
-          </li>
+        <ul className="grid gap-2.5">
+          {rows.map((row) => (
+            <li
+              key={row.label}
+              className="grid grid-cols-[6.2rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-white/8 bg-white/2 px-2.5 py-2"
+            >
+              <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-aurora-fg-muted/90">{row.label}</span>
+              <span className="truncate text-sm font-medium text-white/92">{row.value}</span>
+            </li>
+          ))}
         </ul>
       )}
     </section>

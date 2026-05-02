@@ -4,10 +4,16 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 
-BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+# 0.0.0.0 = listen on all interfaces so phones/tablets on the same Wi‑Fi can reach this machine.
+# Override with BACKEND_HOST=127.0.0.1 if you want localhost-only.
+BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
-FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
+FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+# 1 = Vite dev server uses HTTPS (self-signed). Default on so microphone works on Wi‑Fi URLs (https://192.168.…).
+# Browsers block getUserMedia on plain http:// + LAN IP. Set FRONTEND_HTTPS=0 for http only (use http://localhost then).
+FRONTEND_HTTPS="${FRONTEND_HTTPS:-1}"
+export FRONTEND_HTTPS
 BACKEND_VENV_PYTHON="${BACKEND_VENV_PYTHON:-$HOME/.venvs/localVocalAgent/bin/python}"
 OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen2.5:7b}"
@@ -174,11 +180,40 @@ ensure_ollama_running
 ensure_ollama_model "$EMBEDDING_MODEL"
 ensure_ollama_model "$OLLAMA_MODEL"
 
+# Uvicorn does not accept connections until lifespan startup (DB, Chroma, etc.) finishes.
+# Starting Vite first causes proxy ECONNREFUSED — wait until /health responds.
+wait_for_backend_ready() {
+  local url="http://127.0.0.1:${BACKEND_PORT}/health"
+  local max_attempts="${BACKEND_READY_ATTEMPTS:-120}"
+  local delay="${BACKEND_READY_DELAY:-0.5}"
+  echo "Waiting for backend to accept connections (lifespan may take a while on first run)..."
+  for ((i = 1; i <= max_attempts; i++)); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      echo "Backend is ready."
+      return 0
+    fi
+    if ! kill -0 "${BACKEND_PID:-}" 2>/dev/null; then
+      echo "Error: backend process exited before becoming ready. Check logs above."
+      exit 1
+    fi
+    sleep "$delay"
+  done
+  echo "Error: backend did not respond at $url after ${max_attempts} attempts (${delay}s apart)."
+  exit 1
+}
+
 echo "Starting backend on http://$BACKEND_HOST:$BACKEND_PORT ..."
 "$PYTHON_BIN" -m uvicorn app.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" &
 BACKEND_PID=$!
 
-echo "Starting frontend on http://$FRONTEND_HOST:$FRONTEND_PORT ..."
+wait_for_backend_ready
+
+if [[ "$FRONTEND_HTTPS" == "1" ]]; then
+  _FE_PROTO="https"
+else
+  _FE_PROTO="http"
+fi
+echo "Starting frontend on ${_FE_PROTO}://$FRONTEND_HOST:$FRONTEND_PORT ..."
 (
   cd "$FRONTEND_DIR"
   npm run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort
@@ -187,8 +222,20 @@ FRONTEND_PID=$!
 
 echo ""
 echo "Services ready:"
-echo "  Backend : http://$BACKEND_HOST:$BACKEND_PORT"
-echo "  Frontend: http://$FRONTEND_HOST:$FRONTEND_PORT"
+echo "  Backend : http://127.0.0.1:$BACKEND_PORT (this machine)"
+echo "  Frontend: ${_FE_PROTO}://127.0.0.1:$FRONTEND_PORT (this machine)"
+if command -v ipconfig >/dev/null 2>&1; then
+  _LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
+  if [[ -n "${_LAN_IP:-}" ]]; then
+    echo "  Same Wi‑Fi: ${_FE_PROTO}://${_LAN_IP}:$FRONTEND_PORT"
+    if [[ "$FRONTEND_HTTPS" != "1" ]]; then
+      echo "  Note: mic is blocked on http:// + LAN IP — use http://localhost:$FRONTEND_PORT on this Mac, or set FRONTEND_HTTPS=1."
+    fi
+  fi
+fi
+if [[ "$FRONTEND_HTTPS" == "1" ]]; then
+  echo "  HTTPS: if the browser shows a certificate warning, use Advanced → Continue (dev certificate only)."
+fi
 echo "Press Ctrl+C to stop both."
 
 if [[ -n "${BACKEND_PID:-}" && -n "${FRONTEND_PID:-}" ]]; then

@@ -1,15 +1,26 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
-/** Map profile language pill → `SpeechRecognition.lang` (best-effort). */
-export function speechRecognitionLang(languageLabel: string): string {
+/** Ordered `SpeechRecognition.lang` codes to try (Bangla: Chromium often accepts bn-IN where bn-BD fails). */
+export function speechRecognitionLangCandidates(languageLabel: string): readonly string[] {
   const raw = languageLabel.trim();
-  if (!raw || raw.toLowerCase() === "default") {
-    return typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
-  }
   const l = raw.toLowerCase();
-  if (l.includes("bangla") || raw.includes("বাংলা")) return "bn-BD";
-  if (l.includes("english")) return "en-US";
-  return "en-US";
+  if (!raw || l === "default") {
+    const nav =
+      typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+    return [nav];
+  }
+  const isBangla =
+    l.includes("bangla") || raw.includes("বাংলা") || l.includes("bengali");
+  if (isBangla) {
+    return ["bn-IN", "bn-BD", "bn", "en-US"];
+  }
+  if (l.includes("english")) return ["en-US"];
+  return ["en-US"];
+}
+
+/** Map profile language pill → primary `SpeechRecognition.lang` (best-effort). */
+export function speechRecognitionLang(languageLabel: string): string {
+  return speechRecognitionLangCandidates(languageLabel)[0] ?? "en-US";
 }
 
 function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
@@ -20,16 +31,33 @@ function getSpeechRecognitionCtor(): SpeechRecognitionConstructor | null {
 /**
  * Live captioning while `active` (typically while mic is recording) via Web Speech API.
  * Interim + final results; no network round-trip. Falls back silently if unsupported.
+ * `utteranceSeq` increments when a VAD/push segment ends — clears accumulated text so only the current clip shows.
  */
-export function useLiveSpeechTranscript(active: boolean, languageLabel: string) {
+export function useLiveSpeechTranscript(
+  active: boolean,
+  languageLabel: string,
+  utteranceSeq = 0,
+) {
   const [finalText, setFinalText] = useState("");
   const [interimText, setInterimText] = useState("");
+  const accumulatedRef = useRef("");
   const activeRef = useRef(active);
   useEffect(() => {
     activeRef.current = active;
   }, [active]);
 
-  const lang = useMemo(() => speechRecognitionLang(languageLabel), [languageLabel]);
+  const langCandidates = useMemo(
+    () => speechRecognitionLangCandidates(languageLabel),
+    [languageLabel],
+  );
+
+  useEffect(() => {
+    accumulatedRef.current = "";
+    startTransition(() => {
+      setFinalText("");
+      setInterimText("");
+    });
+  }, [utteranceSeq]);
 
   const displayText = useMemo(() => {
     const f = finalText.trim();
@@ -61,57 +89,9 @@ export function useLiveSpeechTranscript(active: boolean, languageLabel: string) 
     if (!Ctor) return;
 
     let rec: SpeechRecognition | null = null;
-    let accumulated = "";
     let disposed = false;
 
-    const startFresh = () => {
-      if (!activeRef.current || disposed) return;
-      try {
-        rec = new Ctor();
-        rec.continuous = true;
-        rec.interimResults = true;
-        rec.lang = lang;
-
-        rec.onresult = (event: SpeechRecognitionEvent) => {
-          let interim = "";
-          let chunk = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const r = event.results[i];
-            const t = r[0]?.transcript ?? "";
-            if (r.isFinal) chunk += t;
-            else interim += t;
-          }
-          if (chunk) {
-            accumulated = `${accumulated} ${chunk}`.trim();
-            setFinalText(accumulated);
-          }
-          setInterimText(interim.trim());
-        };
-
-        rec.onerror = () => {
-          /* noisy in some browsers; live caption is best-effort */
-        };
-
-        rec.onend = () => {
-          if (disposed || !activeRef.current || !rec) return;
-          try {
-            rec.start();
-          } catch {
-            /* already running */
-          }
-        };
-
-        rec.start();
-      } catch {
-        /* ignore */
-      }
-    };
-
-    startFresh();
-
-    return () => {
-      disposed = true;
-      activeRef.current = false;
+    const tearDownRec = () => {
       if (rec) {
         rec.onresult = null;
         rec.onerror = null;
@@ -127,9 +107,75 @@ export function useLiveSpeechTranscript(active: boolean, languageLabel: string) 
         }
       }
       rec = null;
+    };
+
+    const startAt = (index: number) => {
+      if (disposed || !activeRef.current || index >= langCandidates.length) return;
+      const langCode = langCandidates[index]!;
+
+      tearDownRec();
+
+      try {
+        const r = new Ctor();
+        rec = r;
+        r.continuous = true;
+        r.interimResults = true;
+        r.lang = langCode;
+
+        r.onresult = (event: SpeechRecognitionEvent) => {
+          let interim = "";
+          let chunk = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const result = event.results[i];
+            const t = result[0]?.transcript ?? "";
+            if (result.isFinal) chunk += t;
+            else interim += t;
+          }
+          if (chunk) {
+            accumulatedRef.current = `${accumulatedRef.current} ${chunk}`.trim();
+            setFinalText(accumulatedRef.current);
+          }
+          setInterimText(interim.trim());
+        };
+
+        r.onerror = (ev: Event) => {
+          const code = (ev as SpeechRecognitionErrorEvent).error;
+          if (
+            code === "language-not-supported" ||
+            (code === "network" && index < langCandidates.length - 1)
+          ) {
+            tearDownRec();
+            startAt(index + 1);
+            return;
+          }
+        };
+
+        r.onend = () => {
+          if (disposed || !activeRef.current) return;
+          try {
+            r.start();
+          } catch {
+            /* already running or invalid state */
+          }
+        };
+
+        r.start();
+      } catch {
+        if (index + 1 < langCandidates.length) {
+          startAt(index + 1);
+        }
+      }
+    };
+
+    startAt(0);
+
+    return () => {
+      disposed = true;
+      activeRef.current = false;
+      tearDownRec();
       startTransition(() => setInterimText(""));
     };
-  }, [active, lang]);
+  }, [active, langCandidates, utteranceSeq]);
 
   const supported = typeof window !== "undefined" && getSpeechRecognitionCtor() !== null;
 

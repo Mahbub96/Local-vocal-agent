@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import Select, case, desc, func, select
+from sqlalchemy import Select, case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.settings import get_settings
 from app.memory.short_term.cache import short_term_memory_store
 from app.models import Message, Metadata, Session
+from app.services.effective_assistant_prefs import EffectiveAssistantPrefs, resolve_effective_assistant_prefs
 
 
 settings = get_settings()
@@ -23,6 +25,7 @@ class MemoryContext:
     short_term_messages: list[dict[str, str]]
     long_term_messages: list[Message]
     user_profile: dict[str, Any] | None = None
+    effective_prefs: EffectiveAssistantPrefs | None = None
 
 
 class MemoryService:
@@ -57,7 +60,7 @@ class MemoryService:
     async def get_recent_messages(
         self, session_id: str, *, limit: int | None = None
     ) -> list[Message]:
-        query_limit = limit or settings.short_term_message_limit
+        query_limit = limit if limit is not None else settings.short_term_message_limit
         statement: Select[tuple[Message]] = (
             select(Message)
             .where(Message.session_id == session_id)
@@ -108,7 +111,6 @@ class MemoryService:
         await self.db_session.commit()
         await self.db_session.refresh(message)
 
-        self.short_term_store.append(session_id, role=role, content=content)
         return message
 
     async def build_context(
@@ -117,10 +119,32 @@ class MemoryService:
         *,
         long_term_messages: list[Message] | None = None,
         user_id: str | None = None,
+        effective_prefs: EffectiveAssistantPrefs | None = None,
+        cached_profile: dict[str, Any] | None = None,
+        recent_messages_cached: list[Message] | None = None,
     ) -> MemoryContext:
-        short_term_messages = self.short_term_store.get(session_id)
-        if not short_term_messages:
-            recent_messages = await self.get_recent_messages(session_id)
+        profile: dict[str, Any] | None = None
+        if user_id:
+            if cached_profile is not None:
+                profile = cached_profile
+            else:
+                p = await self.get_user_profile(user_id)
+                profile = p if p else None
+        eff = effective_prefs or resolve_effective_assistant_prefs(profile)
+        st_limit = eff.short_term_message_limit
+
+        if recent_messages_cached is not None:
+            rows = (
+                recent_messages_cached[-st_limit:]
+                if len(recent_messages_cached) > st_limit
+                else recent_messages_cached
+            )
+            short_term_messages = [
+                {"role": message.role, "content": message.content} for message in rows
+            ]
+        else:
+            # Indexed session_id + sequence_number — durable history for the LLM.
+            recent_messages = await self.get_recent_messages(session_id, limit=st_limit)
             short_term_messages = [
                 {"role": message.role, "content": message.content}
                 for message in recent_messages
@@ -129,16 +153,14 @@ class MemoryService:
         long_term_context = self._prepare_long_term_context(
             short_term_messages=short_term_messages,
             long_term_messages=long_term_messages or [],
+            memory_top_k_cap=eff.memory_top_k,
         )
-        profile: dict[str, Any] | None = None
-        if user_id:
-            p = await self.get_user_profile(user_id)
-            profile = p if p else None
         return MemoryContext(
             session_id=session_id,
             short_term_messages=short_term_messages,
             long_term_messages=long_term_context,
             user_profile=profile,
+            effective_prefs=eff,
         )
 
     async def fetch_messages_by_ids(self, message_ids: list[str]) -> list[Message]:
@@ -154,16 +176,26 @@ class MemoryService:
     async def fetch_session_messages(
         self, session_id: str, *, limit: int | None = None
     ) -> list[Message]:
-        statement: Select[tuple[Message]] = (
+        """Return messages in chronological order. With ``limit``, the **latest** N turns (not the oldest)."""
+        if limit is None:
+            statement: Select[tuple[Message]] = (
+                select(Message)
+                .where(Message.session_id == session_id)
+                .order_by(Message.sequence_number.asc())
+            )
+            result = await self.db_session.execute(statement)
+            return result.scalars().all()
+
+        statement = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.sequence_number.asc())
+            .order_by(Message.sequence_number.desc())
+            .limit(limit)
         )
-        if limit:
-            statement = statement.limit(limit)
-
         result = await self.db_session.execute(statement)
-        return result.scalars().all()
+        rows = list(result.scalars().all())
+        rows.reverse()
+        return rows
 
     async def list_sessions(
         self,
@@ -238,6 +270,44 @@ class MemoryService:
         result = await self.db_session.execute(statement)
         return int(result.scalar() or 0)
 
+    async def search_user_messages_keyword(
+        self,
+        user_id: str,
+        query: str,
+        *,
+        limit: int,
+        min_word_len: int,
+    ) -> list[Message]:
+        """
+        Substring recall across every session for this user (complements vector search).
+        Terms are alphanumeric / Bangla script tokens from the query.
+        """
+        raw = (query or "").strip()
+        if not raw or limit <= 0:
+            return []
+        words = re.findall(r"[A-Za-z0-9\u0980-\u09FF]+", raw)
+        terms: list[str] = []
+        for w in words:
+            if len(w) >= min_word_len:
+                terms.append(w)
+        terms = list(dict.fromkeys(terms))  # stable unique
+        terms.sort(key=len, reverse=True)
+        terms = terms[:6]
+        if not terms and len(raw) >= 6:
+            terms = [raw[:120]]
+        if not terms:
+            return []
+        conds = [Message.content.ilike(f"%{t}%") for t in terms]
+        statement: Select[tuple[Message]] = (
+            select(Message)
+            .join(Session, Message.session_id == Session.id)
+            .where(Session.user_id == user_id, or_(*conds))
+            .order_by(desc(Message.created_at))
+            .limit(limit)
+        )
+        result = await self.db_session.execute(statement)
+        return list(result.scalars().all())
+
     async def get_usage_summary(self, user_id: str) -> dict[str, int]:
         statement = (
             select(
@@ -303,7 +373,14 @@ class MemoryService:
         )
         result = await self.db_session.execute(statement)
         entry = result.scalars().first()
-        payload = json.dumps(profile, ensure_ascii=True)
+        existing: dict[str, Any] = {}
+        if entry is not None:
+            try:
+                existing = json.loads(entry.value)
+            except json.JSONDecodeError:
+                existing = {}
+        merged = {**existing, **profile}
+        payload = json.dumps(merged, ensure_ascii=True)
         if entry is None:
             entry = Metadata(
                 key=key,
@@ -315,7 +392,7 @@ class MemoryService:
             entry.value = payload
             entry.value_type = "json"
         await self.db_session.commit()
-        return profile
+        return merged
 
     async def set_message_feedback(self, message_id: str, value: str) -> str | None:
         message = await self.db_session.get(Message, message_id)
@@ -391,11 +468,13 @@ class MemoryService:
         *,
         short_term_messages: list[dict[str, str]],
         long_term_messages: list[Message],
+        memory_top_k_cap: int | None = None,
     ) -> list[Message]:
         """Deduplicate and cap semantic memory before prompt injection."""
         if not long_term_messages:
             return []
 
+        cap = memory_top_k_cap if memory_top_k_cap is not None else settings.memory_top_k
         short_term_signatures = {
             f"{message['role']}::{message['content'].strip()}"
             for message in short_term_messages
@@ -411,6 +490,6 @@ class MemoryService:
                 continue
             seen_ids.add(message.id)
             deduped.append(message)
-            if len(deduped) >= settings.memory_top_k:
+            if len(deduped) >= cap:
                 break
         return deduped

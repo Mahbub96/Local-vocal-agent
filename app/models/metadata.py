@@ -16,6 +16,8 @@ class Metadata(Base):
         Index("idx_metadata_message_id", "message_id"),
         Index("idx_metadata_key", "key"),
         Index("idx_metadata_key_value", "key", "value"),
+        # Latest row per key (e.g. user_profile:{id}) — ORDER BY created_at DESC LIMIT 1
+        Index("idx_metadata_key_created_at", "key", "created_at"),
     )
 
     id: Mapped[str] = mapped_column(

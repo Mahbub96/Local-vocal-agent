@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SessionListItem(BaseModel):
@@ -75,12 +75,36 @@ class UsageSummaryResponse(BaseModel):
 
 
 class UserProfile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     name: str | None = None
     language: str | None = None
     location: str | None = None
     profession: str | None = None
     project: str | None = None
     preferences: list[str] = []
+    # Per-user TTS tempo (ffmpeg atempo). Omitted = server default from env.
+    tts_playback_speed: float | None = Field(default=None, ge=0.85, le=2.0)
+    # Spoken name to wake the assistant when voice_listen_paused is true (set via chat or voice).
+    assistant_wake_name: str | None = Field(default=None, max_length=64)
+
+    @field_validator("assistant_wake_name", mode="before")
+    @classmethod
+    def _normalize_wake_name(cls, v: object) -> object:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            s = v.strip()
+            if len(s) < 2:
+                return None
+            return s[:64]
+        return v
+    # When true, voice uploads are ignored unless the transcript includes assistant_wake_name (text chat always works).
+    voice_listen_paused: bool = False
+    # After you say the wake name in quiet mode, voice stays open for follow-ups until you say stop / keep quiet.
+    voice_wake_session_active: bool = False
+    # Per-user overrides for retrievable assistant knobs (memory, LLM caps, search). Set via chat/voice commands.
+    assistant_app_overrides: dict[str, object] | None = None
 
 
 class UserProfileResponse(BaseModel):

@@ -32,24 +32,28 @@ export function SystemStatus({ metrics }: SystemStatusProps) {
       kind: "cpu" as const,
       value: metrics ? `${metrics.cpu_percent.toFixed(0)}%` : "—",
       pct: metrics?.cpu_percent ?? 0,
+      available: metrics != null,
     },
     {
       key: "RAM",
       kind: "ram" as const,
       value: metrics ? `${metrics.memory_percent.toFixed(0)}%` : "—",
       pct: metrics?.memory_percent ?? 0,
+      available: metrics != null,
     },
     {
       key: "GPU",
       kind: "gpu" as const,
       value: metrics?.gpu_percent != null ? `${metrics.gpu_percent.toFixed(0)}%` : "—",
       pct: metrics?.gpu_percent ?? 0,
+      available: metrics?.gpu_percent != null,
     },
     {
       key: "NPU",
       kind: "npu" as const,
       value: metrics?.npu_percent != null ? `${metrics.npu_percent.toFixed(0)}%` : "—",
       pct: metrics?.npu_percent ?? 0,
+      available: metrics?.npu_percent != null,
     },
   ];
 
@@ -58,13 +62,13 @@ export function SystemStatus({ metrics }: SystemStatusProps) {
 
   return (
     <section
-      className="rounded-aurora-2xl border border-aurora-border bg-aurora-surface p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      className="rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,40,0.94),rgba(10,14,26,0.94))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(0,0,0,0.35)]"
       aria-label="System status"
     >
-      <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-aurora-fg-muted">
+      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
         System Status
       </h4>
-      <div className="mb-3 h-10 overflow-hidden rounded-aurora-md border border-aurora-divider bg-black/35">
+      <div className="mb-3 h-10 overflow-hidden rounded-xl border border-white/8 bg-[#090d1c] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {sparkPath ? (
           <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
             <defs>
@@ -77,25 +81,30 @@ export function SystemStatus({ metrics }: SystemStatusProps) {
               d={sparkPath}
               fill="none"
               stroke="url(#aurora-spark)"
-              strokeWidth={2.5}
+              strokeWidth={2.2}
               vectorEffect="non-scaling-stroke"
             />
           </svg>
         ) : (
-          <div className="h-full w-full bg-linear-to-r from-aurora-cyan/8 to-aurora-purple/8" />
+          <div className="h-full w-full bg-linear-to-r from-[#00d2ff]/12 to-aurora-purple/12" />
         )}
       </div>
       <ul className="space-y-2.5">
         {rows.map((row) => (
           <li key={row.key} className="flex items-center gap-2 text-xs">
-            <span className="w-8 shrink-0 text-aurora-fg-muted">{row.key}</span>
-            <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-white/6">
-              <div
-                className={`${barFill} transition-[width] duration-500`}
-                style={{ width: `${Math.max(6, Math.min(100, row.pct))}%` }}
-              />
+            <span className="w-8 shrink-0 text-xs tracking-[0.04em] text-white/80">{row.key}</span>
+            <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-white/7">
+              <div className="absolute inset-y-0 left-0 w-2 rounded-full bg-white/7" />
+              {row.available ? (
+                <div
+                  className={`${barFill} transition-[width] duration-500`}
+                  style={{ width: `${Math.max(4, Math.min(100, row.pct))}%` }}
+                />
+              ) : (
+                <div className="absolute left-0 top-1/2 size-2 -translate-y-1/2 rounded-full bg-aurora-purple/80 shadow-[0_0_10px_rgba(157,80,187,0.35)]" />
+              )}
             </div>
-            <span className="w-9 shrink-0 text-right tabular-nums text-aurora-fg/80">{row.value}</span>
+            <span className="w-10 shrink-0 text-right text-xs tabular-nums text-white/90">{row.value}</span>
           </li>
         ))}
       </ul>

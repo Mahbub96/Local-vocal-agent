@@ -15,6 +15,8 @@ class Session(Base):
         Index("idx_sessions_updated_at", "updated_at"),
         Index("idx_sessions_last_message_at", "last_message_at"),
         Index("idx_sessions_user_id", "user_id"),
+        # list_sessions: WHERE user_id AND is_active ORDER BY last_message_at
+        Index("idx_sessions_user_active_last", "user_id", "is_active", "last_message_at"),
     )
 
     id: Mapped[str] = mapped_column(

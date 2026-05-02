@@ -16,3 +16,10 @@ def prefers_bangla_tts(language: str | None) -> bool:
     if "বাংলা" in raw:
         return True
     return low in {"bn", "bn-bd"}
+
+
+def contains_bengali_script(text: str | None) -> bool:
+    """True if *text* includes Bengali Unicode (U+0980–U+09FF). Used to route TTS to the BN model."""
+    if not text:
+        return False
+    return any("\u0980" <= ch <= "\u09ff" for ch in text)

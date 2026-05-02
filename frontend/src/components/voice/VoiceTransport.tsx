@@ -35,27 +35,32 @@ export function VoiceTransport({
   const micAria = handsFree ? "Stop hands-free listening" : isRecording ? "Stop recording and send" : "Start voice recording";
 
   return (
-    <div className={cn("flex items-center justify-center gap-3 sm:gap-4", className)} role="group" aria-label="Voice controls">
+    <div className={cn("flex items-center justify-center gap-2 sm:gap-2.5", className)} role="group" aria-label="Voice controls">
       <RoundToolbarButton
         title={micTitle}
         aria-label={micAria}
         aria-pressed={Boolean(isRecording || handsFree)}
         onClick={onMic}
         disabled={disabled}
-        className={cn((isRecording || handsFree) && "border-cyan-400/45 bg-cyan-500/12 ring-1 ring-cyan-400/35")}
+        className={cn(
+          "size-10 sm:size-11",
+          (isRecording || handsFree) && "border-cyan-400/45 bg-cyan-500/12 ring-1 ring-cyan-400/35",
+        )}
       >
-        <Mic className="size-[1.15rem] sm:size-5" strokeWidth={1.75} />
+        <Mic className="size-4 sm:size-[1.05rem]" strokeWidth={1.75} />
       </RoundToolbarButton>
       <GradientRingButton
+        ringVariant="cyan"
         title="Stop playback or cancel recording"
         aria-label="Stop playback or cancel recording"
         onClick={onStop}
         disabled={disabled}
+        className="size-[2.95rem] shadow-[0_0_26px_rgba(0,210,255,0.45)] sm:size-[3.2rem]"
       >
-        <Square className="size-5 fill-white text-white sm:size-6" strokeWidth={0} />
+        <Square className="size-3.5 fill-white text-white sm:size-[1.05rem]" strokeWidth={0} />
       </GradientRingButton>
-      <RoundToolbarButton title="Voice settings" aria-label="Voice settings" onClick={onSettings} disabled={disabled}>
-        <Sliders className="size-[1.15rem] sm:size-5" strokeWidth={1.75} />
+      <RoundToolbarButton title="Voice settings" aria-label="Voice settings" onClick={onSettings} disabled={disabled} className="size-10 sm:size-11">
+        <Sliders className="size-4 sm:size-[1.05rem]" strokeWidth={1.75} />
       </RoundToolbarButton>
     </div>
   );

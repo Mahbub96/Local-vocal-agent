@@ -10,13 +10,14 @@ import {
   ThumbsUp,
   Volume2,
 } from "lucide-react";
-import { formatMessageTime, formatSessionDayLabel } from "../utils/time";
+import { useRevealedStreamText } from "../hooks/useRevealedStreamText";
+import { MarkdownText } from "./ui/MarkdownText";
+import { formatMessageTime } from "../utils/time";
 import type { Message, MessageFeedbackValue } from "../types/ui";
 import type { VoiceCaptureMode } from "../hooks/useVoiceCapture";
 
 type ChatPanelProps = {
   title: string;
-  sessionDayTime: string | null;
   messages: Message[];
   input: string;
   loading: boolean;
@@ -30,11 +31,17 @@ type ChatPanelProps = {
   isVoiceHot?: boolean;
   /** Same as voice card primary mic (push toggle or end hands-free). */
   onVoicePrimary?: () => void;
+  /** Server profile: voice ignored unless wake name appears in speech. */
+  voiceListenPaused?: boolean;
+  /** After saying wake in quiet mode, follow-ups need no wake until stop. */
+  voiceWakeSessionActive?: boolean;
+  wakeName?: string | null;
+  /** Persist `voice_listen_paused: false` (same as saying “resume listening”). */
+  onTurnOffVoiceSilentMode?: () => void | Promise<void>;
 };
 
 export function ChatPanel({
   title,
-  sessionDayTime,
   messages,
   input,
   loading,
@@ -45,14 +52,23 @@ export function ChatPanel({
   voiceCaptureMode = "push",
   isVoiceHot = false,
   onVoicePrimary,
+  voiceListenPaused = false,
+  voiceWakeSessionActive = false,
+  wakeName = null,
+  onTurnOffVoiceSilentMode,
 }: ChatPanelProps) {
-  const dayLabel = formatSessionDayLabel(sessionDayTime);
   const [localFeedback, setLocalFeedback] = useState<
     Record<string, MessageFeedbackValue>
   >({});
   const chatListRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const userGradId = useId().replace(/:/g, "");
+  const [turningOffSilent, setTurningOffSilent] = useState(false);
+
+  const revealedStream = useRevealedStreamText(
+    streamingAssistantText,
+    Boolean(loading && streamingAssistantText),
+  );
 
   const sendMessage = useCallback(async () => {
     if (loading) return;
@@ -74,6 +90,16 @@ export function ChatPanel({
     },
     [input, loading, sendMessage],
   );
+
+  const handleTurnOffSilentMode = useCallback(async () => {
+    if (!onTurnOffVoiceSilentMode || turningOffSilent) return;
+    setTurningOffSilent(true);
+    try {
+      await Promise.resolve(onTurnOffVoiceSilentMode());
+    } finally {
+      setTurningOffSilent(false);
+    }
+  }, [onTurnOffVoiceSilentMode, turningOffSilent]);
 
   const copy = useCallback(async (text: string) => {
     try {
@@ -104,32 +130,61 @@ export function ChatPanel({
     if (shouldStickToBottomRef.current) {
       list.scrollTop = list.scrollHeight;
     }
-  }, [messages, loading, streamingAssistantText]);
+  }, [messages, loading, streamingAssistantText, revealedStream]);
 
   return (
     <section
-      className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-aurora-border"
+      className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/8 bg-[#05070a]/35"
       aria-label="Chat"
     >
       <span className="sr-only">Session: {title}</span>
 
-      <div className="flex shrink-0 justify-center border-b border-aurora-divider py-3">
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-full border border-aurora-border bg-white/4 px-4 py-1.5 text-xs font-medium text-white/75 shadow-[0_0_20px_rgba(59,130,246,0.08)] transition hover:border-white/20 hover:bg-white/7"
-          title={title || "Session"}
+      {voiceListenPaused ? (
+        <div
+          className="shrink-0 border-b border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs leading-snug text-amber-50/95"
+          role="status"
         >
-          {dayLabel}
-          <span className="text-white/45" aria-hidden>
-            ▾
-          </span>
-        </button>
-      </div>
+          <div className="mx-auto flex max-w-2xl flex-col items-center gap-2.5 text-center sm:flex-row sm:justify-between sm:text-left">
+            <div className="min-w-0 flex-1">
+              {voiceWakeSessionActive ? (
+                <>
+                  Quiet mode — you already used{" "}
+                  <span className="font-semibold text-amber-100">
+                    {wakeName ? `“${wakeName}”` : "the wake name"}
+                  </span>
+                  . Keep talking; no need to repeat it. Say “stop”, “that’s
+                  enough”, or “keep quiet” when done. Say “resume listening” for
+                  full always-on voice again.
+                </>
+              ) : (
+                <>
+                  Voice silent mode is on — include{" "}
+                  <span className="font-semibold text-amber-100">
+                    {wakeName ? `“${wakeName}”` : "your wake name"}
+                  </span>{" "}
+                  in speech to reach the assistant, or type here. Say “resume
+                  listening” or use the button to turn this off.
+                </>
+              )}
+            </div>
+            {onTurnOffVoiceSilentMode ? (
+              <button
+                type="button"
+                onClick={() => void handleTurnOffSilentMode()}
+                disabled={turningOffSilent || loading}
+                className="shrink-0 rounded-lg border border-amber-400/35 bg-amber-500/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-50 transition hover:bg-amber-500/30 disabled:opacity-50"
+              >
+                {turningOffSilent ? "Saving…" : "Turn off silent mode"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div
         ref={chatListRef}
         onScroll={handleChatListScroll}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 py-3 sm:space-y-5 sm:px-4 sm:py-4 md:px-5"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-2 py-2 sm:space-y-4 sm:px-3 sm:py-3"
       >
         {messages.map((msg) => {
           const isUser = msg.role === "user";
@@ -193,9 +248,9 @@ export function ChatPanel({
                 </div>
               )}
               <div
-                className={`min-w-0 flex-1 rounded-2xl border px-4 py-3 ${
+                className={`min-w-0 flex-1 rounded-xl border px-3 py-2.5 ${
                   isUser
-                    ? "border-purple-500/25 bg-purple-500/8 shadow-[0_0_24px_rgba(168,85,247,0.12)]"
+                    ? "border-purple-500/25 bg-purple-500/8 shadow-[0_0_16px_rgba(168,85,247,0.1)]"
                     : "border-aurora-border bg-white/4"
                 }`}
               >
@@ -214,9 +269,7 @@ export function ChatPanel({
                     </time>
                   ) : null}
                 </div>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/88">
-                  {msg.content}
-                </p>
+                <MarkdownText text={msg.content} />
                 {!isUser ? (
                   <div
                     className="mt-3 flex flex-wrap gap-1 border-t border-aurora-divider pt-2"
@@ -285,20 +338,22 @@ export function ChatPanel({
             >
               <span className="text-xs font-bold text-cyan-300">A</span>
             </div>
-            <div className="min-w-0 flex-1 rounded-2xl border border-aurora-border bg-white/4 px-4 py-3">
-              <div className="mb-1.5 flex flex-wrap items-baseline gap-2">
+            <div className="min-w-0 flex-1 rounded-xl border border-aurora-border bg-white/4 px-3 py-2.5">
+              <div className="mb-1 flex flex-wrap items-baseline gap-2">
                 <span className="text-sm font-semibold text-cyan-200/90">
                   Aurora
                 </span>
                 <span className="text-[11px] text-cyan-400/70">typing…</span>
               </div>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/88">
-                {streamingAssistantText}
-                <span
-                  className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-cyan-400/90 align-text-bottom"
-                  aria-hidden
-                />
-              </p>
+              <div className="relative">
+                <MarkdownText text={revealedStream} />
+                {revealedStream.length < streamingAssistantText.length || loading ? (
+                  <span
+                    className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-cyan-400/90 align-text-bottom"
+                    aria-hidden
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}
@@ -310,7 +365,7 @@ export function ChatPanel({
             >
               <span className="text-xs font-bold text-cyan-300">A</span>
             </div>
-            <div className="min-w-0 flex-1 rounded-2xl border border-aurora-border bg-white/4 px-4 py-3">
+            <div className="min-w-0 flex-1 rounded-xl border border-aurora-border bg-white/4 px-3 py-2.5">
               <p className="text-sm font-semibold text-cyan-200/90">Aurora</p>
               <p className="mt-1 text-sm text-white/65">
                 Send a message to start. Your session is connected to the local
@@ -323,9 +378,9 @@ export function ChatPanel({
 
       <form
         onSubmit={handleSubmit}
-        className="shrink-0 border-t border-aurora-border bg-black/20 p-3 md:p-4"
+        className="relative z-10 shrink-0 border-t border-white/10 bg-[#06080f]/95 p-3 shadow-[0_-16px_48px_rgba(0,0,0,0.55)] backdrop-blur-md md:p-4"
       >
-        <div className="flex items-end gap-2 rounded-2xl border border-aurora-border bg-[#0a0d14]/90 px-2 py-2 shadow-inner md:gap-3 md:px-3">
+        <div className="flex items-end gap-2 rounded-2xl border border-cyan-400/25 bg-[#0a0e16]/95 px-2 py-2 shadow-[0_0_0_1px_rgba(0,209,255,0.18),0_4px_28px_rgba(0,209,255,0.08),0_12px_40px_rgba(0,0,0,0.45)] ring-1 ring-cyan-400/20 md:gap-3 md:px-3">
           <div className="flex shrink-0 gap-0.5 pb-1.5 text-white/45">
             <button
               type="button"
@@ -345,7 +400,7 @@ export function ChatPanel({
             </button>
           </div>
           <textarea
-            className="min-h-[44px] flex-1 resize-none bg-transparent py-2.5 text-sm text-white/90 outline-none placeholder:text-white/35"
+            className="min-h-[52px] flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-snug text-white/92 outline-none placeholder:text-white/40 md:min-h-[56px]"
             value={input}
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={handleComposerKeyDown}
@@ -388,7 +443,7 @@ export function ChatPanel({
           </button>
           <button
             type="submit"
-            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-xl bg-linear-to-br from-aurora-cyan to-indigo-600 text-aurora-canvas shadow-[0_0_28px_rgba(0,210,255,0.45)] transition hover:brightness-110 disabled:opacity-50"
+            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-lg bg-linear-to-br from-aurora-cyan to-indigo-600 text-aurora-canvas shadow-[0_0_28px_rgba(0,210,255,0.45)] transition hover:brightness-110 disabled:opacity-50"
             disabled={loading}
             title="Send"
             aria-label="Send message"

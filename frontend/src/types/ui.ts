@@ -34,6 +34,12 @@ export type VoiceChatResponse = {
   used_internet: boolean;
   audio_path?: string | null;
   audio_url?: string | null;
+  /** Voice ignored (wake gate); no new chat messages. */
+  skipped?: boolean;
+  /** wake_gate | no_speech */
+  skip_reason?: string | null;
+  voice_listen_paused?: boolean | null;
+  voice_wake_session_active?: boolean | null;
 };
 
 export type Metrics = {
@@ -86,6 +92,14 @@ export type Profile = {
   profession: string | null;
   project: string | null;
   preferences: string[];
+  /** Per-user TTS tempo (e.g. 1.2). Omitted = server default. */
+  tts_playback_speed?: number | null;
+  /** Say this name in voice when silent mode is on. */
+  assistant_wake_name?: string | null;
+  /** When true, voice is ignored unless the transcript includes the wake name (text chat always works). */
+  voice_listen_paused?: boolean;
+  /** After wake in quiet mode: follow-up voice works without wake until stop / keep quiet. */
+  voice_wake_session_active?: boolean;
 };
 
 export type ProfileResponse = {
@@ -117,5 +131,40 @@ export type MessageFeedbackResponse = {
 export type FileListResponse = {
   root: string;
   current_path: string;
-  entries: { name: string; path: string; is_dir: boolean }[];
+  entries: {
+    name: string;
+    path: string;
+    is_dir: boolean;
+    size?: number | null;
+    modified_at?: string | null;
+  }[];
+};
+
+export type FileContentResponse = {
+  path: string;
+  content: string;
+};
+
+export type MemorySearchMatch = {
+  message_id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  score: number;
+  created_at?: string | null;
+};
+
+export type MemorySearchResponse = {
+  matches: MemorySearchMatch[];
+};
+
+export type FileSearchMatch = {
+  path: string;
+  line_number: number;
+  line: string;
+};
+
+export type FileSearchResponse = {
+  query: string;
+  matches: FileSearchMatch[];
 };

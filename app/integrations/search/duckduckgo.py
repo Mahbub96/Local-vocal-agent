@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from html import unescape
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
@@ -144,3 +145,17 @@ class DuckDuckGoSearchClient:
                 }
             )
         return items
+
+
+_ddg_client: DuckDuckGoSearchClient | None = None
+_ddg_client_lock = threading.Lock()
+
+
+def get_duckduckgo_search_client() -> DuckDuckGoSearchClient:
+    """Reuse one search client per process (stateless; avoids per-request setup)."""
+    global _ddg_client
+    if _ddg_client is None:
+        with _ddg_client_lock:
+            if _ddg_client is None:
+                _ddg_client = DuckDuckGoSearchClient()
+    return _ddg_client

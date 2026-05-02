@@ -7,6 +7,33 @@ const AUDIO_CONSTRAINTS: MediaTrackConstraints = {
   autoGainControl: true,
 };
 
+function hasGetUserMedia(): boolean {
+  return typeof navigator !== "undefined" && Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+/** Browsers omit `mediaDevices` on insecure pages (e.g. http:// + LAN IP). */
+function describeMicUnavailable(): string {
+  if (typeof window === "undefined") return "Microphone not available.";
+  if (!window.isSecureContext) {
+    const port = window.location.port || "5173";
+    const host = window.location.hostname || "localhost";
+    return (
+      "Microphone is blocked: you opened a non-secure URL (usually http:// plus a Wi‑Fi/LAN address). " +
+      `On this computer use http://localhost:${port}. From a phone, use https://${host}:${port} (not http://) when the dev server runs with HTTPS — see start.sh (FRONTEND_HTTPS defaults to 1) and accept the browser’s certificate warning once.`
+    );
+  }
+  return "Microphone not available. Allow microphone permission for this site or try another browser.";
+}
+
+function formatGetUserMediaError(e: unknown): string {
+  const name = e instanceof DOMException ? e.name : "";
+  const msg = e instanceof Error ? e.message : String(e);
+  if (name === "NotAllowedError" || /not allowed|permission/i.test(msg)) {
+    return "Microphone permission denied. Allow the mic for this site in the browser address bar or site settings.";
+  }
+  return msg;
+}
+
 /** ~RMS on time-domain buffer (same scale as waveform meter). */
 function rmsFromAnalyser(analyser: AnalyserNode): number {
   const buf = new Uint8Array(analyser.fftSize);
@@ -76,24 +103,60 @@ type UseVoiceCaptureOptions = {
   /** Upload + model work — pause auto finalization (segment keeps recording until silence after busy). */
   busy: boolean;
   onUtterance: (blob: Blob) => void | Promise<void>;
-  /** User speaks over assistant TTS — stop playback. */
+  /** User speaks over assistant TTS — stop playback (only after sustained loud input; see barge-in logic). */
   onBargeIn?: () => void;
+  /** While assistant TTS is playing — ignore mic barge-in so small sounds do not cut off speech. */
+  suppressBargeIn?: boolean;
 };
 
-/** Silence after speech to end one utterance (ms). */
-const SILENCE_END_MS = 1500;
+/** Silence after speech to end one utterance (ms). Lower = faster turn-taking (more false cuts). */
+const SILENCE_END_MS = 720;
 /** Ignore very short noise bursts. */
-const MIN_UTTERANCE_MS = 700;
-const SPEECH_RMS = 0.014;
-const BARGE_RMS = 0.02;
+const MIN_UTTERANCE_MS = 420;
+/** If RMS stays modestly above noise this long (ms), count as speech (quiet talkers). */
+const SOFT_SPEECH_MS = 160;
+/** Absolute barge-in floor (also scaled vs adaptive noise floor below). */
+const BARGE_RMS_MIN = 0.045;
+/** Loud energy must stay above threshold this long (ms) to count as intentional interrupt. */
+const BARGE_HOLD_MS = 280;
 const MAX_SEGMENT_MS = 45_000;
+/** EMA alpha for always-listen RMS (reduces flutter that resets silence). */
+const RMS_SMOOTH = 0.2;
+
+/**
+ * Adaptive VAD: thresholds are **relative to a running noise floor** + optional **drop from speech peak**.
+ * Fixed RMS fails when room tone sits above a low “silence” line — the segment never ends.
+ */
+const MIN_NOISE_FLOOR = 0.004;
+const MAX_NOISE_FLOOR = 0.042;
+/** “Quiet” vs estimated noise floor — starts end-of-utterance timer. */
+const SILENCE_ABOVE_FLOOR = 0.0045;
+/** First sign of speech (above ambient). */
+const VOICE_ON_ABOVE_FLOOR = 0.0045;
+/** Strong speech — resets silence timer. */
+const STRONG_ABOVE_FLOOR = 0.016;
+/** Resume talking after a pause (soft continuation). */
+const RESUME_ABOVE_FLOOR = 0.012;
+/** If peak was this far above floor, also end when energy falls to `PEAK_FRACTION_END` of peak. */
+const PEAK_MIN_OVER_FLOOR = 0.012;
+const PEAK_FRACTION_END = 0.38;
 
 /**
  * Single mic pipeline: **push** (tap mic to record/send) or **always** (hands-free; auto-send after pause).
  * One `MediaStream` at a time; echo cancellation enabled for duplex-style use.
  */
-export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoiceCaptureOptions) {
+export function useVoiceCapture({
+  mode,
+  busy,
+  onUtterance,
+  onBargeIn,
+  suppressBargeIn = false,
+}: UseVoiceCaptureOptions) {
   const [isHot, setIsHot] = useState(false);
+  /** True once real speech is detected in the current hands-free segment (prevents “always listening” UI while idle noise). */
+  const [segmentSpeechDetected, setSegmentSpeechDetected] = useState(false);
+  /** Bumps when a voice segment is finalized (hands-free clip or push send) — reset live speech caption. */
+  const [utteranceSeq, setUtteranceSeq] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,6 +171,7 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
   const busyRef = useRef(busy);
   const onUtteranceRef = useRef(onUtterance);
   const onBargeInRef = useRef(onBargeIn);
+  const suppressBargeInRef = useRef(suppressBargeIn);
   const alwaysLoopCancelRef = useRef<(() => void) | null>(null);
   const isHotRef = useRef(false);
 
@@ -127,6 +191,9 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
   useEffect(() => {
     onBargeInRef.current = onBargeIn;
   }, [onBargeIn]);
+  useEffect(() => {
+    suppressBargeInRef.current = suppressBargeIn;
+  }, [suppressBargeIn]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -137,6 +204,7 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
       releaseAllHardware(rafRef, audioCtxRef, analyserRef, streamRef, recRef, chunksRef);
       setMicLevel(0);
       setIsHot(false);
+      setSegmentSpeechDetected(false);
     };
   }, []);
 
@@ -172,12 +240,12 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
   const startPush = useCallback(async () => {
     if (modeRef.current !== "push") return;
     setError(null);
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setError("Microphone not available.");
+    if (!hasGetUserMedia()) {
+      setError(describeMicUnavailable());
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+      const stream = await navigator.mediaDevices!.getUserMedia({ audio: AUDIO_CONSTRAINTS });
       streamRef.current = stream;
       setupMeter(stream);
 
@@ -191,7 +259,7 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
       recRef.current = mr;
       setIsHot(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatGetUserMediaError(e));
       stopMeter(rafRef, audioCtxRef, analyserRef, setMicLevel);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -271,12 +339,12 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
 
     const run = async () => {
       setError(null);
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError("Microphone not available.");
+      if (!hasGetUserMedia()) {
+        setError(describeMicUnavailable());
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: AUDIO_CONSTRAINTS });
+        const stream = await navigator.mediaDevices!.getUserMedia({ audio: AUDIO_CONSTRAINTS });
         if (cancelled || modeRef.current !== "always") {
           stream.getTracks().forEach((t) => t.stop());
           return;
@@ -292,7 +360,13 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
 
         setIsHot(true);
 
+        let firstHandsFreeSegment = true;
         while (!cancelled && mountedRef.current && modeRef.current === "always") {
+          if (!firstHandsFreeSegment && mountedRef.current) {
+            setUtteranceSeq((n) => n + 1);
+          }
+          firstHandsFreeSegment = false;
+
           const mime = pickMimeType();
           const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
           const parts: BlobPart[] = [];
@@ -302,19 +376,31 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
 
           const blobPromise = new Promise<Blob | null>((resolve) => {
             mr.onstop = () => {
+              if (mountedRef.current) {
+                setSegmentSpeechDetected(false);
+              }
               const blob = new Blob(parts, { type: mr.mimeType || "audio/webm" });
-              resolve(blob.size > 400 ? blob : null);
+              resolve(blob.size > 280 ? blob : null);
             };
           });
 
           mr.start(100);
+          if (mountedRef.current) {
+            setSegmentSpeechDetected(false);
+          }
 
           let rafId = 0;
           let heardSpeech = false;
           let firstSpeechAt: number | null = null;
           let silenceAt: number | null = null;
+          let emaRms = 0;
+          let noiseFloor = 0.012;
+          let speechPeak = 0;
+          let softEnergyMs = 0;
+          let lastTickAt = performance.now();
           const segmentStart = performance.now();
           let bargeArmed = true;
+          let bargeHoldMs = 0;
 
           await new Promise<void>((done) => {
             const tick = () => {
@@ -329,21 +415,65 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
                 return;
               }
 
-              const rms = rmsFromAnalyser(analyser);
+              const raw = rmsFromAnalyser(analyser);
+              emaRms = emaRms === 0 ? raw : (1 - RMS_SMOOTH) * emaRms + RMS_SMOOTH * raw;
+              const rms = emaRms;
               const now = performance.now();
+              const dt = Math.min(80, now - lastTickAt);
+              lastTickAt = now;
 
-              if (bargeArmed && rms > BARGE_RMS && onBargeInRef.current) {
+              if (!heardSpeech && rms > noiseFloor + 0.0035 && rms >= 0.0075) {
+                softEnergyMs += dt;
+                if (softEnergyMs >= SOFT_SPEECH_MS) {
+                  if (firstSpeechAt === null) firstSpeechAt = now - Math.min(softEnergyMs, 380);
+                  heardSpeech = true;
+                  if (mountedRef.current) setSegmentSpeechDetected(true);
+                }
+              } else if (!heardSpeech) {
+                softEnergyMs = 0;
+              }
+
+              const bargeTh = Math.max(BARGE_RMS_MIN, noiseFloor + 0.034);
+              if (!suppressBargeInRef.current && rms > bargeTh) {
+                bargeHoldMs += dt;
+              } else {
+                bargeHoldMs = Math.max(0, bargeHoldMs - dt * 1.8);
+              }
+              if (
+                !suppressBargeInRef.current &&
+                bargeArmed &&
+                bargeHoldMs >= BARGE_HOLD_MS &&
+                onBargeInRef.current
+              ) {
                 onBargeInRef.current();
+                bargeHoldMs = 0;
                 bargeArmed = false;
                 window.setTimeout(() => {
                   bargeArmed = true;
-                }, 800);
+                }, 900);
               }
 
-              if (busyRef.current) {
-                rafId = requestAnimationFrame(tick);
-                return;
+              // Track ambient between ~silence and “strong” so thresholds move with HVAC / fan / gain.
+              if (rms < noiseFloor + STRONG_ABOVE_FLOOR * 0.72) {
+                noiseFloor = Math.max(
+                  MIN_NOISE_FLOOR,
+                  Math.min(MAX_NOISE_FLOOR, noiseFloor * 0.94 + rms * 0.06),
+                );
               }
+
+              const strongTh = noiseFloor + STRONG_ABOVE_FLOOR;
+              const voiceOnTh = noiseFloor + VOICE_ON_ABOVE_FLOOR;
+              const resumeTh = noiseFloor + RESUME_ABOVE_FLOOR;
+
+              const tailByFloor = rms < noiseFloor + SILENCE_ABOVE_FLOOR;
+              const tailByPeak =
+                heardSpeech &&
+                speechPeak >= noiseFloor + PEAK_MIN_OVER_FLOOR &&
+                rms < speechPeak * PEAK_FRACTION_END;
+              const inSilenceTail = tailByFloor || tailByPeak;
+
+              // Never skip VAD while `busy`: silence detection would stall and the segment runs until
+              // MAX_SEGMENT_MS — feels like the mic “never stops listening” after you finish talking.
 
               const elapsed = now - segmentStart;
               if (!heardSpeech && elapsed >= MAX_SEGMENT_MS) {
@@ -357,13 +487,22 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
                 return;
               }
 
-              if (rms > SPEECH_RMS) {
+              // Hysteresis: mid band (not silence tail, not strong) does not reset silenceAt.
+              if (rms >= strongTh) {
                 if (!heardSpeech) firstSpeechAt = now;
                 heardSpeech = true;
+                if (mountedRef.current) setSegmentSpeechDetected(true);
                 silenceAt = null;
+              } else if (!heardSpeech && rms >= voiceOnTh) {
+                if (firstSpeechAt === null) firstSpeechAt = now;
+                heardSpeech = true;
+                if (mountedRef.current) setSegmentSpeechDetected(true);
               } else if (heardSpeech) {
-                if (silenceAt === null) silenceAt = now;
-                const silentFor = silenceAt ? now - silenceAt : 0;
+                if (rms >= resumeTh && silenceAt !== null) silenceAt = null;
+                if (inSilenceTail) {
+                  if (silenceAt === null) silenceAt = now;
+                }
+                const silentFor = silenceAt != null ? now - silenceAt : 0;
                 const utterOk =
                   firstSpeechAt != null && now - firstSpeechAt >= MIN_UTTERANCE_MS && silentFor >= SILENCE_END_MS;
                 const cap = heardSpeech && elapsed >= MAX_SEGMENT_MS;
@@ -379,6 +518,10 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
                 }
               }
 
+              if (heardSpeech && rms >= voiceOnTh) {
+                speechPeak = Math.max(speechPeak, rms);
+              }
+
               rafId = requestAnimationFrame(tick);
             };
             rafId = requestAnimationFrame(tick);
@@ -387,23 +530,32 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
           const blob = await blobPromise;
           if (cancelled || modeRef.current !== "always") break;
 
-          if (blob && !busyRef.current) {
-            try {
-              await Promise.resolve(onUtteranceRef.current(blob));
-            } catch {
-              /* parent sets error */
+          if (blob) {
+            const deadline = performance.now() + 45_000;
+            while (busyRef.current && mountedRef.current && !cancelled && performance.now() < deadline) {
+              await new Promise((r) => window.setTimeout(r, 60));
+            }
+            if (!cancelled && mountedRef.current) {
+              try {
+                await Promise.resolve(onUtteranceRef.current(blob));
+              } catch {
+                /* parent sets error */
+              }
             }
           }
 
           await new Promise((r) => window.setTimeout(r, 120));
         }
       } catch (e) {
-        if (mountedRef.current) setError(e instanceof Error ? e.message : String(e));
+        if (mountedRef.current) setError(formatGetUserMediaError(e));
       } finally {
         stopMeter(rafRef, audioCtxRef, analyserRef, setMicLevel);
         streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
-        if (mountedRef.current) setIsHot(false);
+        if (mountedRef.current) {
+          setIsHot(false);
+          setSegmentSpeechDetected(false);
+        }
       }
     };
 
@@ -416,6 +568,7 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
       stopMeter(rafRef, audioCtxRef, analyserRef, setMicLevel);
       streamRef.current = null;
       setIsHot(false);
+      setSegmentSpeechDetected(false);
     };
   }, [mode, setupMeter]);
 
@@ -424,7 +577,10 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
     if (busyRef.current) return;
     if (isHotRef.current) {
       const blob = await stopPush();
-      if (blob) await Promise.resolve(onUtteranceRef.current(blob));
+      if (blob) {
+        await Promise.resolve(onUtteranceRef.current(blob));
+        setUtteranceSeq((n) => n + 1);
+      }
     } else {
       await startPush();
     }
@@ -435,8 +591,13 @@ export function useVoiceCapture({ mode, busy, onUtterance, onBargeIn }: UseVoice
     if (modeRef.current === "push" && isHotRef.current) void discardPush();
   }, [discardPush]);
 
+  /** UI “Listening…” should mean speech activity, not only an open hands-free stream. */
+  const isListeningUi = mode === "always" ? segmentSpeechDetected : isHot;
+
   return {
     isHot,
+    isListeningUi,
+    utteranceSeq,
     micLevel,
     error,
     setError,

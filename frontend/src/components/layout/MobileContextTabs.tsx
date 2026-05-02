@@ -9,6 +9,8 @@ type MobileContextTabsProps = {
   profile: Profile | null;
   onSaveProfile: (next: Profile) => Promise<void>;
   activities: ToolActivity[];
+  activeTab?: MobileContextTabId;
+  onTabChange?: (tab: MobileContextTabId) => void;
 };
 
 const TABS = [
@@ -16,14 +18,18 @@ const TABS = [
   { id: "memory" as const, label: "Memory" },
   { id: "tools" as const, label: "Tools" },
 ];
+export type MobileContextTabId = (typeof TABS)[number]["id"];
 
 export function MobileContextTabs({
   thinking,
   profile,
   onSaveProfile,
   activities,
+  activeTab = "think",
+  onTabChange,
 }: MobileContextTabsProps) {
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("think");
+  const [tabInternal, setTabInternal] = useState<MobileContextTabId>(activeTab);
+  const tab = onTabChange ? activeTab : tabInternal;
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden lg:hidden">
@@ -43,7 +49,10 @@ export function MobileContextTabs({
                 ? "bg-white/10 text-white shadow-[0_0_16px_rgba(59,130,246,0.2)]"
                 : "text-white/50 hover:bg-white/4 hover:text-white/80"
             }`}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              if (onTabChange) onTabChange(t.id);
+              else setTabInternal(t.id);
+            }}
           >
             {t.label}
           </button>

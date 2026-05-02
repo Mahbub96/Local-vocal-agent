@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from app.database.chroma.client import get_memory_collection
@@ -76,3 +77,17 @@ class EmbeddingService:
             return "general"
         words = normalized.split(" ")
         return " ".join(words[:max_words]).lower()
+
+
+_embedding_singleton: EmbeddingService | None = None
+_embedding_lock = threading.Lock()
+
+
+def get_embedding_service() -> EmbeddingService:
+    """One embedding + Chroma handle per process (matches singleton HTTP pool in ``OllamaEmbeddingClient``)."""
+    global _embedding_singleton
+    if _embedding_singleton is None:
+        with _embedding_lock:
+            if _embedding_singleton is None:
+                _embedding_singleton = EmbeddingService()
+    return _embedding_singleton

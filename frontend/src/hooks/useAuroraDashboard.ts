@@ -6,7 +6,7 @@ import {
   apiGet,
   apiPost,
   apiPostChatStream,
-  apiPostFormData,
+  apiPostVoiceStream,
   apiPut,
   USER_ID,
 } from "../services/api";
@@ -24,7 +24,6 @@ import type {
   ToolActivity,
   ToolActivityListResponse,
   UsageSummary,
-  VoiceChatResponse,
   VoiceStatus,
 } from "../types/ui";
 
@@ -49,14 +48,84 @@ export function useAuroraDashboard() {
   const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
   const [fileEntriesCount, setFileEntriesCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Only while a voice clip is uploading/processing — hands-free waits on this, not on text chat `loading`. */
+  const [voiceUploadBusy, setVoiceUploadBusy] = useState(false);
   const [error, setError] = useState("");
   const [streamingAssistantText, setStreamingAssistantText] = useState("");
   const [ttsRevealText, setTtsRevealText] = useState("");
+  const [voiceGateHint, setVoiceGateHint] = useState("");
+  /** True from TTS playback start-attempt until ended/stop — blocks overlapping hands-free turns. */
+  const [ttsAudioPlaying, setTtsAudioPlaying] = useState(false);
+  const voiceGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsFullRef = useRef("");
+  /** URLs for sequential playback of incremental voice TTS (`tts_chunk` SSE). */
+  const ttsPlayQueueRef = useRef<string[]>([]);
+  const ttsDrainLoopRef = useRef(false);
+  /** Monotonic request id to ignore stale async completions. */
+  const latestTurnRequestRef = useRef(0);
+  const latestMessagesSessionRef = useRef("");
+  const latestThinkingSessionRef = useRef("");
+  const latestActivityKeyRef = useRef("");
+
+  const beginTurnRequest = useCallback(() => {
+    latestTurnRequestRef.current += 1;
+    return latestTurnRequestRef.current;
+  }, []);
+
+  const isLatestTurnRequest = useCallback(
+    (requestId: number) => latestTurnRequestRef.current === requestId,
+    [],
+  );
+
+  const playStreamingTtsQueue = useCallback(
+    async (requestId: number) => {
+      if (ttsDrainLoopRef.current) return;
+      ttsDrainLoopRef.current = true;
+      try {
+        while (isLatestTurnRequest(requestId)) {
+          const url = ttsPlayQueueRef.current.shift();
+          if (!url) break;
+          setTtsAudioPlaying(true);
+          await new Promise<void>((resolve) => {
+            const audio = new Audio(url);
+            voiceAudioRef.current = audio;
+            audio.addEventListener("ended", () => resolve(), { once: true });
+            audio.addEventListener("error", () => resolve(), { once: true });
+            void audio.play().catch(() => resolve());
+          });
+        }
+      } finally {
+        voiceAudioRef.current = null;
+        ttsDrainLoopRef.current = false;
+        if (!isLatestTurnRequest(requestId)) {
+          ttsPlayQueueRef.current = [];
+        }
+        const more = ttsPlayQueueRef.current.length > 0;
+        setTtsAudioPlaying(more);
+        if (more && isLatestTurnRequest(requestId)) {
+          void playStreamingTtsQueue(requestId);
+        }
+      }
+    },
+    [isLatestTurnRequest],
+  );
+
+  const queueStreamingTtsUrl = useCallback(
+    (requestId: number, audioUrlRelative: string) => {
+      const base = apiBase.replace(/\/$/, "");
+      const path = audioUrlRelative.replace(/^\//, "");
+      ttsPlayQueueRef.current.push(`${base}/${path}`);
+      void playStreamingTtsQueue(requestId);
+    },
+    [playStreamingTtsQueue],
+  );
 
   /** Drop decode buffers and network hold on TTS `Audio` (prevents leaks on repeated playback / unmount). */
   const releaseVoiceAudio = useCallback(() => {
+    setTtsAudioPlaying(false);
+    ttsPlayQueueRef.current = [];
+    ttsDrainLoopRef.current = false;
     const a = voiceAudioRef.current;
     if (!a) return;
     a.pause();
@@ -72,6 +141,12 @@ export function useAuroraDashboard() {
     return () => releaseVoiceAudio();
   }, [releaseVoiceAudio]);
 
+  useEffect(() => {
+    return () => {
+      if (voiceGateTimerRef.current) clearTimeout(voiceGateTimerRef.current);
+    };
+  }, []);
+
   const loadSessions = useCallback(async () => {
     const data = await apiGet<{ sessions: Session[] }>(`/sessions?user_id=${USER_ID}&limit=20`);
     setSessions(data.sessions);
@@ -79,7 +154,9 @@ export function useAuroraDashboard() {
   }, []);
 
   const loadMessages = useCallback(async (sessionId: string) => {
+    latestMessagesSessionRef.current = sessionId;
     const data = await apiGet<{ messages: Message[] }>(`/sessions/${sessionId}/messages?limit=30`);
+    if (latestMessagesSessionRef.current !== sessionId) return;
     setMessages(data.messages);
   }, []);
 
@@ -100,14 +177,19 @@ export function useAuroraDashboard() {
   }, []);
 
   const loadThinking = useCallback(async (sessionId: string) => {
+    latestThinkingSessionRef.current = sessionId;
     const data = await apiGet<ThinkingProcess>(`/sessions/${sessionId}/thinking-process`);
+    if (latestThinkingSessionRef.current !== sessionId) return;
     setThinking(data.steps);
   }, []);
 
   const loadToolActivity = useCallback(async (sessionId: string | undefined) => {
+    const key = sessionId ?? "__all__";
+    latestActivityKeyRef.current = key;
     const q = new URLSearchParams({ limit: "8" });
     if (sessionId) q.set("session_id", sessionId);
     const data = await apiGet<ToolActivityListResponse>(`/tools/activity?${q.toString()}`);
+    if (latestActivityKeyRef.current !== key) return;
     setActivities(data.activities);
   }, []);
 
@@ -209,6 +291,7 @@ export function useAuroraDashboard() {
 
   const sendMessage = useCallback(async () => {
     if (!input.trim()) return;
+    const requestId = beginTurnRequest();
     setLoading(true);
     setError("");
     setStreamingAssistantText("");
@@ -221,40 +304,66 @@ export function useAuroraDashboard() {
           session_id: activeSessionId || undefined,
         },
         {
-          onToken: (t) => setStreamingAssistantText((prev) => prev + t),
+          onToken: (t) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            setStreamingAssistantText((prev) => prev + t);
+          },
           onDone: async (result) => {
+            if (!isLatestTurnRequest(requestId)) return;
             setInput("");
-            setStreamingAssistantText("");
+            // Keep streamed text visible until persisted messages are reloaded.
+            // This prevents the UI from collapsing to "all at once" on fast done events.
+            setStreamingAssistantText((prev) => prev || result.response || "");
             const sid = result.session_id;
             await loadSessions();
+            if (!isLatestTurnRequest(requestId)) return;
             setActiveSessionId(sid);
             await Promise.all([
               loadMessages(sid),
               loadThinking(sid),
               loadToolActivity(sid),
               loadUsageSummary(),
+              loadProfile(),
             ]);
+            if (!isLatestTurnRequest(requestId)) return;
+            setStreamingAssistantText("");
           },
           onError: (msg) => {
+            if (!isLatestTurnRequest(requestId)) return;
             setError(msg);
             setStreamingAssistantText("");
           },
         },
       );
     } catch (err) {
+      if (!isLatestTurnRequest(requestId)) return;
       setError(String(err));
       setStreamingAssistantText("");
     } finally {
+      if (!isLatestTurnRequest(requestId)) return;
       setLoading(false);
     }
-  }, [input, activeSessionId, loadSessions, loadMessages, loadThinking, loadToolActivity, loadUsageSummary]);
+  }, [
+    input,
+    activeSessionId,
+    beginTurnRequest,
+    isLatestTurnRequest,
+    loadSessions,
+    loadMessages,
+    loadThinking,
+    loadToolActivity,
+    loadUsageSummary,
+    loadProfile,
+  ]);
 
   const stopVoicePlayback = releaseVoiceAudio;
 
   const sendVoiceBlob = useCallback(
     async (blob: Blob) => {
       if (!blob.size) return;
+      const requestId = beginTurnRequest();
       setLoading(true);
+      setVoiceUploadBusy(true);
       setError("");
       try {
         const fd = new FormData();
@@ -262,77 +371,135 @@ export function useAuroraDashboard() {
         fd.append("file", blob, `speech.${ext}`);
         fd.append("user_id", USER_ID);
         if (activeSessionId) fd.append("session_id", activeSessionId);
-
-        const res = await apiPostFormData<VoiceChatResponse>("/voice-chat", fd, { timeoutMs: 600_000 });
-
         stopVoicePlayback();
         setStreamingAssistantText("");
-        ttsFullRef.current = res.response;
-        setTtsRevealText("");
-
-        if (res.audio_url) {
-          const base = apiBase.replace(/\/$/, "");
-          const path = res.audio_url.replace(/^\//, "");
-          const url = `${base}/${path}`;
-          const audio = new Audio(url);
-          audio.preload = "auto";
-          voiceAudioRef.current = audio;
-
-          const syncCaption = () => {
-            const full = ttsFullRef.current;
-            const a = voiceAudioRef.current;
-            if (!full || !a) return;
-            const dur = a.duration;
-            if (!Number.isFinite(dur) || dur <= 0) {
-              setTtsRevealText(full);
+        let usedStreamingTts = false;
+        await apiPostVoiceStream(fd, {
+          onToken: (t) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            setStreamingAssistantText((prev) => prev + t);
+          },
+          onTtsChunk: (audioUrlRelative) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            usedStreamingTts = true;
+            queueStreamingTtsUrl(requestId, audioUrlRelative);
+          },
+          onDone: async (res) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            if (res.skipped) {
+              setError("");
+              if (res.skip_reason === "no_speech") {
+                if (voiceGateTimerRef.current) clearTimeout(voiceGateTimerRef.current);
+                setVoiceGateHint("No speech detected. Speak a bit longer or check the mic.");
+                voiceGateTimerRef.current = setTimeout(() => {
+                  setVoiceGateHint("");
+                  voiceGateTimerRef.current = null;
+                }, 6000);
+                return;
+              }
+              if (voiceGateTimerRef.current) clearTimeout(voiceGateTimerRef.current);
+              setVoiceGateHint(
+                "Silent mode is on: this clip had no wake name, so it was not sent. " +
+                  "Say your wake name in the same recording, use push-to-talk, or say “resume listening.”",
+              );
+              voiceGateTimerRef.current = setTimeout(() => {
+                setVoiceGateHint("");
+                voiceGateTimerRef.current = null;
+              }, 10_000);
+              await loadProfile().catch(() => undefined);
               return;
             }
-            const n = Math.min(
-              full.length,
-              Math.max(0, Math.ceil((a.currentTime / dur) * full.length)),
-            );
-            setTtsRevealText(full.slice(0, n));
-          };
+            setVoiceGateHint("");
+            // Keep streamed text visible until messages are refreshed.
+            setStreamingAssistantText((prev) => prev || res.response || "");
+            ttsFullRef.current = res.response;
+            setTtsRevealText("");
 
-          audio.addEventListener("timeupdate", syncCaption);
-          audio.addEventListener("loadeddata", syncCaption);
-          audio.addEventListener("ended", () => {
-            setTtsRevealText(ttsFullRef.current);
-            audio.removeEventListener("timeupdate", syncCaption);
-            audio.removeEventListener("loadeddata", syncCaption);
-          });
-          void audio.play().catch((err) => {
-            console.warn("TTS playback failed (response still saved):", err);
-            setTtsRevealText(ttsFullRef.current);
-          });
-        } else {
-          setTtsRevealText(res.response);
-        }
+            if (!usedStreamingTts && res.audio_url) {
+              setTtsAudioPlaying(true);
+              const base = apiBase.replace(/\/$/, "");
+              const path = res.audio_url.replace(/^\//, "");
+              const url = `${base}/${path}`;
+              const audio = new Audio(url);
+              audio.preload = "auto";
+              voiceAudioRef.current = audio;
 
-        const sid = res.session_id;
-        await loadSessions();
-        setActiveSessionId(sid);
-        await Promise.all([
-          loadMessages(sid),
-          loadThinking(sid),
-          loadToolActivity(sid),
-          loadUsageSummary(),
-        ]);
-        setTtsRevealText("");
+              const syncCaption = () => {
+                const full = ttsFullRef.current;
+                const a = voiceAudioRef.current;
+                if (!full || !a) return;
+                const dur = a.duration;
+                if (!Number.isFinite(dur) || dur <= 0) {
+                  setTtsRevealText(full);
+                  return;
+                }
+                const n = Math.min(
+                  full.length,
+                  Math.max(0, Math.ceil((a.currentTime / dur) * full.length)),
+                );
+                setTtsRevealText(full.slice(0, n));
+              };
+
+              audio.addEventListener("timeupdate", syncCaption);
+              audio.addEventListener("loadeddata", syncCaption);
+              audio.addEventListener("ended", () => {
+                setTtsAudioPlaying(false);
+                setTtsRevealText(ttsFullRef.current);
+                audio.removeEventListener("timeupdate", syncCaption);
+                audio.removeEventListener("loadeddata", syncCaption);
+              });
+              void audio.play().catch((err) => {
+                console.warn("TTS playback failed (response still saved):", err);
+                setTtsAudioPlaying(false);
+                setTtsRevealText(ttsFullRef.current);
+              });
+            } else if (!usedStreamingTts) {
+              setTtsAudioPlaying(false);
+              setTtsRevealText(res.response);
+            }
+
+            const sid = res.session_id;
+            await loadSessions();
+            if (!isLatestTurnRequest(requestId)) return;
+            setActiveSessionId(sid);
+            await Promise.all([
+              loadMessages(sid),
+              loadThinking(sid),
+              loadToolActivity(sid),
+              loadUsageSummary(),
+              loadProfile(),
+            ]);
+            if (!isLatestTurnRequest(requestId)) return;
+            setStreamingAssistantText("");
+            setTtsRevealText("");
+          },
+          onError: (msg) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            setError(msg);
+            setStreamingAssistantText("");
+          },
+        });
       } catch (err) {
+        if (!isLatestTurnRequest(requestId)) return;
         setError(String(err));
       } finally {
+        if (!isLatestTurnRequest(requestId)) return;
         setLoading(false);
+        setVoiceUploadBusy(false);
       }
     },
     [
       activeSessionId,
+      beginTurnRequest,
+      isLatestTurnRequest,
       loadSessions,
       loadMessages,
       loadThinking,
       loadToolActivity,
       loadUsageSummary,
       stopVoicePlayback,
+      loadProfile,
+      queueStreamingTtsUrl,
     ],
   );
 
@@ -355,11 +522,6 @@ export function useAuroraDashboard() {
   );
 
   const activeSessionTitle = activeSession?.title || "Active Session";
-
-  const dayLabel = useMemo(() => {
-    const t = activeSession?.last_message_at || activeSession?.created_at;
-    return t ?? null;
-  }, [activeSession]);
 
   const lastAssistantText = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -400,7 +562,6 @@ export function useAuroraDashboard() {
     error,
     sendMessage,
     activeSessionTitle,
-    dayLabel,
     lastAssistantText,
     streamingAssistantText,
     ttsRevealText,
@@ -410,5 +571,9 @@ export function useAuroraDashboard() {
     allSystemsOk,
     sendVoiceBlob,
     stopVoicePlayback,
+    loadProfile,
+    voiceGateHint,
+    voiceUploadBusy,
+    ttsAudioPlaying,
   };
 }

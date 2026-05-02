@@ -48,7 +48,7 @@ from app.schemas.ui import (
 from app.schemas.voice import VoiceChatResponse
 from app.agents.assistant_agent import ModelUnavailableError
 from app.services.chat_service import ChatService
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_service import get_embedding_service
 from app.services.memory_service import MemoryService
 from app.services.voice_status_service import voice_status_service
 from app.services.voice_service import VoiceService
@@ -70,11 +70,11 @@ def _tts_public_path(audio_path: str | None) -> str | None:
 
 
 def _resolved_tts_file(filename: str) -> Path:
-    """Single file under `tts_output_dir` (no traversal)."""
+    """Single file under ``tts_staging_dir`` (no traversal)."""
     name = Path(filename).name
     if not name or name != filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename.")
-    base = settings.tts_output_dir.resolve()
+    base = settings.tts_staging_dir.resolve()
     candidate = (base / name).resolve()
     try:
         candidate.relative_to(base)
@@ -193,7 +193,8 @@ async def chat_stream(
     "/voice-chat",
     responses={
         400: {"description": "Uploaded audio file is empty."},
-        422: {"description": "Unable to extract text from audio."},
+        422: {"description": "Unable to extract or transcribe audio."},
+        503: {"description": "Server cannot decode this format (e.g. ffmpeg missing)."},
         504: {"description": "Speech recognition timed out."},
     },
 )
@@ -210,23 +211,56 @@ async def voice_chat(
     service = VoiceService(db_session)
     await voice_status_service.set_state("listening", detail="Audio received", audio_level=45.0)
     try:
-        await voice_status_service.set_state("transcribing", detail="Converting speech to text")
+        # Transcribing → thinking → speaking are set inside VoiceService (Whisper vs LLM vs TTS are separate phases).
         result = await service.handle_voice_chat(
             audio_bytes=audio_bytes,
             filename=file.filename or "input.wav",
             session_id=session_id,
             user_id=user_id,
         )
-        await voice_status_service.set_state(
-            "speaking",
-            detail="Voice response ready",
-            audio_level=58.0,
-        )
         return result.model_copy(update={"audio_url": _tts_public_path(result.audio_path)})
     finally:
         # Keep "speaking" state briefly for UI transition.
         await asyncio.sleep(0.05)
         await voice_status_service.set_state("idle", detail="Waiting for input")
+
+
+@router.post("/voice-chat/stream")
+async def voice_chat_stream(
+    file: Annotated[UploadFile, File(...)],
+    db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
+    session_id: Annotated[str | None, Form()] = None,
+    user_id: Annotated[str | None, Form()] = None,
+) -> StreamingResponse:
+    """SSE for voice: streams assistant tokens after STT, then emits final VoiceChatResponse."""
+    audio_bytes = await file.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded audio file is empty.")
+    service = VoiceService(db_session)
+    await voice_status_service.set_state("listening", detail="Audio received", audio_level=45.0)
+
+    async def event_generator():
+        try:
+            async for chunk in service.handle_voice_chat_stream(
+                audio_bytes=audio_bytes,
+                filename=file.filename or "input.wav",
+                session_id=session_id,
+                user_id=user_id,
+            ):
+                yield chunk.encode("utf-8")
+        finally:
+            await asyncio.sleep(0.05)
+            await voice_status_service.set_state("idle", detail="Waiting for input")
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/tts/audio/{filename}")
@@ -244,7 +278,7 @@ async def memory_search(
     user_id: Annotated[str | None, Query()] = None,
 ) -> MemorySearchResponse:
     memory_service = MemoryService(db_session)
-    embedding_service = EmbeddingService()
+    embedding_service = get_embedding_service()
     retriever = LongTermMemoryRetriever(
         embedding_service=embedding_service,
         memory_service=memory_service,
@@ -620,7 +654,7 @@ async def update_user_profile(
     memory_service = MemoryService(db_session)
     updated_profile = await memory_service.upsert_user_profile(
         user_id,
-        payload.model_dump(),
+        payload.model_dump(exclude_unset=True),
     )
     return UserProfileResponse(user_id=user_id, profile=UserProfile(**updated_profile))
 
@@ -651,7 +685,7 @@ async def update_me(
     memory_service = MemoryService(db_session)
     updated_profile = await memory_service.upsert_user_profile(
         user_id,
-        payload.model_dump(),
+        payload.model_dump(exclude_unset=True),
     )
     profile = UserProfile(**updated_profile)
     return MeResponse(

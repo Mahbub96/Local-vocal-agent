@@ -19,7 +19,7 @@ export function HeroSurface({
   return (
     <Tag
       className={cn(
-        "relative overflow-hidden rounded-3xl border border-white/[0.09] bg-[#0b0d17]/92 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_0_64px_-18px_rgba(0,210,255,0.14),0_0_72px_-28px_rgba(157,80,187,0.16)] sm:p-5 md:p-6",
+        "relative overflow-hidden rounded-xl border border-white/[0.09] bg-[#0b0d17]/92 p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_32px_-12px_rgba(0,210,255,0.08),0_0_40px_-16px_rgba(157,80,187,0.08)] sm:p-2",
         className,
       )}
       {...props}

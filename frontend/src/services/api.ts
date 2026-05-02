@@ -1,6 +1,9 @@
-import type { ChatResponse } from "../types/ui";
+import type { ChatResponse, VoiceChatResponse } from "../types/ui";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api/v1";
+/** Dev: relative `/api/v1` + Vite proxy → backend (works from phone via LAN IP). Prod: set VITE_API_BASE if needed. */
+const API_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined)?.trim() ||
+  (import.meta.env.DEV ? "/api/v1" : "http://localhost:8000/api/v1");
 
 export const USER_ID = "ui-user";
 export const apiBase = API_BASE;
@@ -74,6 +77,19 @@ export type ChatStreamCallbacks = {
   onError: (message: string) => void;
 };
 
+export type VoiceStreamCallbacks = {
+  onToken: (chunk: string) => void;
+  /** Incremental TTS WAV path under API base (streaming voice only). */
+  onTtsChunk?: (audioUrl: string, snippet: string) => void;
+  onDone: (response: VoiceChatResponse) => void;
+  onError: (message: string) => void;
+};
+
+function emitSmallestTextChunks(text: string, onChunk: (chunk: string) => void): void {
+  // Emit by Unicode code points for near-token real-time UI updates.
+  for (const ch of Array.from(text)) onChunk(ch);
+}
+
 /** SSE `POST /chat/stream` — `token` deltas then `done` with `ChatResponse`. */
 export async function apiPostChatStream(
   body: { message: string; user_id: string; session_id?: string },
@@ -113,12 +129,93 @@ export async function apiPostChatStream(
       if (ev === "token") {
         try {
           const j = JSON.parse(data) as { t?: string };
-          if (j.t) callbacks.onToken(j.t);
+          if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
         } catch {
           /* ignore malformed chunk */
         }
       } else if (ev === "done") {
         callbacks.onDone(JSON.parse(data) as ChatResponse);
+      } else if (ev === "error") {
+        try {
+          const j = JSON.parse(data) as { detail?: string };
+          callbacks.onError(j.detail ?? "Request failed");
+        } catch {
+          callbacks.onError(data || "Request failed");
+        }
+      }
+    }
+  }
+}
+
+/** SSE `POST /voice-chat/stream` multipart — token deltas, then final VoiceChatResponse. */
+export async function apiPostVoiceStream(
+  formData: FormData,
+  callbacks: VoiceStreamCallbacks,
+): Promise<void> {
+  let res = await fetch(`${API_BASE}/voice-chat/stream`, {
+    method: "POST",
+    headers: { Accept: "text/event-stream" },
+    body: formData,
+  });
+  if (!res.ok) {
+    // Backward-compatible fallback: if streaming route is not available,
+    // use regular multipart voice-chat endpoint.
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      const fallback = await fetch(`${API_BASE}/voice-chat`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!fallback.ok) {
+        const text = await fallback.text();
+        throw new Error(
+          `POST /voice-chat failed: ${fallback.status}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+        );
+      }
+      callbacks.onDone((await fallback.json()) as VoiceChatResponse);
+      return;
+    }
+    const text = await res.text();
+    throw new Error(
+      `POST /voice-chat/stream failed: ${res.status}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+    );
+  }
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      let ev = "";
+      const dataLines: string[] = [];
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) ev = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+      }
+      const data = dataLines.join("\n");
+      if (!ev || !data) continue;
+      if (ev === "token") {
+        try {
+          const j = JSON.parse(data) as { t?: string };
+          if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
+        } catch {
+          /* ignore malformed chunk */
+        }
+      } else if (ev === "tts_chunk") {
+        try {
+          const j = JSON.parse(data) as { audio_url?: string; t?: string };
+          const au = j.audio_url?.trim();
+          if (au && callbacks.onTtsChunk) callbacks.onTtsChunk(au, j.t ?? "");
+        } catch {
+          /* ignore */
+        }
+      } else if (ev === "done") {
+        callbacks.onDone(JSON.parse(data) as VoiceChatResponse);
       } else if (ev === "error") {
         try {
           const j = JSON.parse(data) as { detail?: string };
