@@ -30,7 +30,7 @@ export function VoiceOutputAside({
   return (
     <aside
       className={cn(
-        "flex min-h-0 flex-col rounded-2xl border border-white/[0.08] bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_40px_-12px_rgba(0,210,255,0.08)] sm:p-5",
+        "flex min-h-0 flex-col rounded-aurora-xl border border-white/[0.08] bg-black/30 p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_40px_-12px_rgba(0,210,255,0.08)] sm:p-4",
         className,
       )}
       aria-label="Voice output"

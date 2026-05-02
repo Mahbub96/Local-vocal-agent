@@ -17,7 +17,7 @@ export function StatusBar({
 }: StatusBarProps) {
   return (
     <footer
-      className="aurora-status-bar flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 py-2 text-[10px] sm:gap-x-5 sm:gap-y-2 sm:px-4 sm:py-2.5 sm:text-[11px] md:px-5 md:text-xs"
+      className="aurora-status-bar flex min-h-[var(--min-height-aurora-statusbar)] shrink-0 flex-wrap items-center justify-between gap-x-2.5 gap-y-1 px-2.5 py-1.5 text-[10px] sm:gap-x-4 sm:gap-y-1.5 sm:px-3 sm:py-2 sm:text-[11px] md:px-4 md:text-xs"
       role="contentinfo"
     >
       <div className="flex min-w-0 max-w-[45%] items-center gap-1.5 sm:max-w-none sm:gap-2">
@@ -51,7 +51,7 @@ export function StatusBar({
           </span>
         </span>
       </div>
-      <div className="flex w-full basis-full items-center justify-center gap-2 border-t border-aurora-divider pt-1.5 sm:w-auto sm:basis-auto sm:border-0 sm:pt-0">
+      <div className="flex w-full basis-full items-center justify-center gap-1.5 border-t border-aurora-divider pt-1 sm:w-auto sm:basis-auto sm:border-0 sm:pt-0">
         <span
           className={`size-2 rounded-full ${allSystemsOk ? "bg-emerald-400" : "bg-rose-400"}`}
           aria-hidden

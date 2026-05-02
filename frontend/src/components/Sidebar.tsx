@@ -48,7 +48,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-[linear-gradient(180deg,#050912_0%,#040710_100%)] px-2 py-2.5 backdrop-blur-xl xl:h-full xl:w-aurora-rail",
+        "flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-linear-to-b from-aurora-rail to-black px-2 py-2.5 backdrop-blur-xl xl:h-full xl:w-aurora-rail",
         className,
         devMode && "ring-1 ring-aurora-cyan/30",
       )}
@@ -65,7 +65,7 @@ export function Sidebar({
         {onRequestClose ? (
           <button
             type="button"
-            className="grid size-8.5 place-items-center rounded-xl border border-white/12 bg-white/5 text-white/70 transition hover:bg-white/10 xl:hidden"
+            className="grid size-8.5 place-items-center rounded-aurora-lg border border-white/12 bg-white/5 text-white/70 transition hover:bg-white/10 xl:hidden"
             aria-label="Close navigation"
             onClick={onRequestClose}
           >
@@ -118,7 +118,7 @@ export function Sidebar({
           onClick={() => setDevMode((d) => !d)}
           aria-pressed={devMode}
           className={cn(
-            "flex items-center justify-between gap-2 rounded-xl border px-2.5 py-2 text-left text-[11px] font-medium transition-all",
+            "flex items-center justify-between gap-2 rounded-aurora-lg border px-2.5 py-2 text-left text-[11px] font-medium transition-all",
             devMode
               ? "border-aurora-cyan/40 bg-aurora-cyan/10 text-aurora-cyan shadow-[0_0_20px_rgba(34,211,238,0.2)]"
               : "border-aurora-border bg-aurora-surface text-aurora-fg-muted hover:border-white/15 hover:bg-white/8",

@@ -102,7 +102,9 @@ type UseVoiceCaptureOptions = {
   mode: VoiceCaptureMode;
   /** Upload + model work — pause auto finalization (segment keeps recording until silence after busy). */
   busy: boolean;
-  onUtterance: (blob: Blob) => void | Promise<void>;
+  /** Snapshot live caption when the audio segment closes (before upload); avoids stale React state. */
+  getTranscriptHint?: () => string;
+  onUtterance: (blob: Blob, transcriptHint: string) => void | Promise<void>;
   /** User speaks over assistant TTS — stop playback (only after sustained loud input; see barge-in logic). */
   onBargeIn?: () => void;
   /** While assistant TTS is playing — ignore mic barge-in so small sounds do not cut off speech. */
@@ -120,6 +122,12 @@ const BARGE_RMS_MIN = 0.045;
 /** Loud energy must stay above threshold this long (ms) to count as intentional interrupt. */
 const BARGE_HOLD_MS = 280;
 const MAX_SEGMENT_MS = 45_000;
+/**
+ * Hands-free: if VAD never sees speech, stop the segment after this long instead of waiting
+ * for MAX_SEGMENT_MS. Long “silent” recordings still encode a large blob and can pass the
+ * size gate → STT hallucinates garbage in random languages.
+ */
+const MAX_SILENCE_ABORT_MS = 15_000;
 /** EMA alpha for always-listen RMS (reduces flutter that resets silence). */
 const RMS_SMOOTH = 0.2;
 
@@ -149,6 +157,7 @@ export function useVoiceCapture({
   mode,
   busy,
   onUtterance,
+  getTranscriptHint,
   onBargeIn,
   suppressBargeIn = false,
 }: UseVoiceCaptureOptions) {
@@ -170,6 +179,7 @@ export function useVoiceCapture({
   const modeRef = useRef(mode);
   const busyRef = useRef(busy);
   const onUtteranceRef = useRef(onUtterance);
+  const getTranscriptHintRef = useRef(getTranscriptHint);
   const onBargeInRef = useRef(onBargeIn);
   const suppressBargeInRef = useRef(suppressBargeIn);
   const alwaysLoopCancelRef = useRef<(() => void) | null>(null);
@@ -188,6 +198,9 @@ export function useVoiceCapture({
   useEffect(() => {
     onUtteranceRef.current = onUtterance;
   }, [onUtterance]);
+  useEffect(() => {
+    getTranscriptHintRef.current = getTranscriptHint;
+  }, [getTranscriptHint]);
   useEffect(() => {
     onBargeInRef.current = onBargeIn;
   }, [onBargeIn]);
@@ -380,7 +393,8 @@ export function useVoiceCapture({
                 setSegmentSpeechDetected(false);
               }
               const blob = new Blob(parts, { type: mr.mimeType || "audio/webm" });
-              resolve(blob.size > 280 ? blob : null);
+              // Never upload noise-only / silence segments — size alone is not a proxy for speech.
+              resolve(blob.size > 280 && heardSpeech ? blob : null);
             };
           });
 
@@ -476,7 +490,7 @@ export function useVoiceCapture({
               // MAX_SEGMENT_MS — feels like the mic “never stops listening” after you finish talking.
 
               const elapsed = now - segmentStart;
-              if (!heardSpeech && elapsed >= MAX_SEGMENT_MS) {
+              if (!heardSpeech && elapsed >= MAX_SILENCE_ABORT_MS) {
                 cancelAnimationFrame(rafId);
                 try {
                   if (mr.state !== "inactive") mr.stop();
@@ -531,13 +545,14 @@ export function useVoiceCapture({
           if (cancelled || modeRef.current !== "always") break;
 
           if (blob) {
+            const hintSnapshot = (getTranscriptHintRef.current?.() ?? "").trim();
             const deadline = performance.now() + 45_000;
             while (busyRef.current && mountedRef.current && !cancelled && performance.now() < deadline) {
               await new Promise((r) => window.setTimeout(r, 60));
             }
             if (!cancelled && mountedRef.current) {
               try {
-                await Promise.resolve(onUtteranceRef.current(blob));
+                await Promise.resolve(onUtteranceRef.current(blob, hintSnapshot));
               } catch {
                 /* parent sets error */
               }
@@ -578,7 +593,8 @@ export function useVoiceCapture({
     if (isHotRef.current) {
       const blob = await stopPush();
       if (blob) {
-        await Promise.resolve(onUtteranceRef.current(blob));
+        const hintSnapshot = (getTranscriptHintRef.current?.() ?? "").trim();
+        await Promise.resolve(onUtteranceRef.current(blob, hintSnapshot));
         setUtteranceSeq((n) => n + 1);
       }
     } else {

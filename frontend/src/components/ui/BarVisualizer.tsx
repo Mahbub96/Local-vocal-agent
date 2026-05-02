@@ -19,9 +19,9 @@ export type BarVisualizerProps = {
 const active = {
   cyan: "bg-aurora-cyan shadow-[0_0_14px_rgba(0,210,255,0.9)]",
   magenta:
-    "bg-linear-to-t from-[#e879f9] to-[#a855f7] shadow-[0_0_14px_rgba(168,85,247,0.85)]",
+    "bg-linear-to-t from-aurora-pink to-aurora-purple shadow-[0_0_14px_rgba(168,85,247,0.85)]",
   gradient:
-    "bg-linear-to-t from-[#9d50bb] to-[#00d2ff] shadow-[0_0_12px_rgba(0,210,255,0.5)]",
+    "bg-linear-to-t from-aurora-purple to-aurora-cyan shadow-[0_0_12px_rgba(0,210,255,0.5)]",
 } as const;
 
 /** Idle bars stay on-brand (reference: cyan / purple bands, not flat gray). */

@@ -20,7 +20,7 @@ export function ToolsWorkspace({
   systemStatus,
 }: ToolsWorkspaceProps) {
   return (
-    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 p-3 sm:p-4">
+    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-aurora-2xl border border-white/10 p-3.5 sm:p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-white">Tools Workspace</h3>
@@ -28,7 +28,7 @@ export function ToolsWorkspace({
             Live capability status and recent tool executions.
           </p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/3 px-2 py-1 text-[11px] text-white/65">
+        <span className="inline-flex items-center gap-1 rounded-aurora-md border border-white/10 bg-white/3 px-2 py-1 text-[11px] text-white/65">
           <Wrench className="size-3.5" />
           {activities.length} recent activity
         </span>
@@ -47,7 +47,7 @@ export function ToolsWorkspace({
           return (
             <article
               key={cap.id}
-              className="rounded-xl border border-white/10 bg-white/3 px-3 py-2.5"
+              className="rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5"
             >
               <div className="mb-1 flex items-center gap-2">
                 <Icon className="size-4 text-cyan-300/90" />
@@ -60,7 +60,7 @@ export function ToolsWorkspace({
       </div>
 
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-        <article className="rounded-xl border border-white/10 bg-white/3 px-3 py-2.5">
+        <article className="rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5">
           <div className="mb-1 flex items-center gap-2">
             <Activity className="size-4 text-emerald-300/90" />
             <p className="text-sm font-semibold text-white/92">Voice runtime</p>
@@ -72,7 +72,7 @@ export function ToolsWorkspace({
             {voiceStatus?.detail || "No active detail."}
           </p>
         </article>
-        <article className="rounded-xl border border-white/10 bg-white/3 px-3 py-2.5">
+        <article className="rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5">
           <div className="mb-1 flex items-center gap-2">
             <Search className="size-4 text-cyan-300/90" />
             <p className="text-sm font-semibold text-white/92">Model runtime</p>
@@ -97,7 +97,7 @@ export function ToolsWorkspace({
               return (
                 <article
                   key={`${a.message_id}-${idx}`}
-                  className="rounded-xl border border-white/10 bg-white/2 px-3 py-2.5"
+                  className="rounded-aurora-lg border border-white/10 bg-white/2 px-3 py-2.5"
                 >
                   <p className="text-sm font-medium text-white/90">{l.title}</p>
                   <p className="text-xs text-white/55">{l.detail}</p>
@@ -108,7 +108,7 @@ export function ToolsWorkspace({
               );
             })
           ) : (
-            <p className="rounded-xl border border-white/10 bg-white/2 px-3 py-2.5 text-sm text-white/55">
+            <p className="rounded-aurora-lg border border-white/10 bg-white/2 px-3 py-2.5 text-sm text-white/55">
               No tool activity yet.
             </p>
           )}

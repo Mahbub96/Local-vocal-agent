@@ -161,15 +161,15 @@ export function VoicePanel({
     <HeroSurface
       aria-label="Voice assistant"
       withRadialHighlight
-      className="rounded-md border border-white/6 bg-[#05070a]/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_22px_-10px_rgba(0,209,255,0.07)] backdrop-blur-sm"
+      className="rounded-aurora-lg border border-white/6 bg-aurora-canvas/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_22px_-10px_rgba(0,209,255,0.07)] backdrop-blur-sm"
     >
-      <div className="relative z-10 flex min-h-0 flex-col gap-2">
+      <div className="relative z-10 flex min-h-0 flex-col gap-1.5 sm:gap-2">
         {/* Row 1 — reference: listen left; Voice Output title only right (accent blue) */}
         <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 sm:items-start sm:gap-3">
           <header className="min-w-0 space-y-0.5">
             <div className="flex items-center gap-2">
               <GlowDot
-                className="bg-[#39ff6b] shadow-[0_0_12px_rgba(57,255,107,0.75)]"
+                className="bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.75)]"
                 aria-hidden
               />
               <h2
@@ -198,10 +198,10 @@ export function VoicePanel({
           <header className="flex min-w-0 items-start justify-start sm:justify-end">
             <div className="flex items-center gap-2">
               <GlowDot
-                className="bg-[#00d1ff] shadow-[0_0_12px_rgba(0,209,255,0.75)]"
+                className="bg-aurora-cyan shadow-[0_0_12px_rgba(0,210,255,0.75)]"
                 aria-hidden
               />
-              <span className="font-sans text-[17px] font-semibold leading-tight text-[#00d1ff]">
+              <span className="font-sans text-[17px] font-semibold leading-tight text-aurora-cyan">
                 Voice Output
               </span>
             </div>
@@ -209,7 +209,7 @@ export function VoicePanel({
         </div>
 
         {/* Row 2 — single horizontal band: waveforms meet the orb (reference: passes through center) */}
-        <div className="relative flex w-full min-h-24 items-center justify-center gap-0 py-0 sm:min-h-28 md:min-h-30">
+        <div className="relative flex w-full min-h-[5.25rem] items-center justify-center gap-0 py-0 sm:min-h-26 md:min-h-28">
           <div className="flex min-h-0 min-w-0 flex-1 items-center justify-end pr-0 md:pr-0.5">
             <BarVisualizer
               bars={barsIn}
@@ -248,7 +248,7 @@ export function VoicePanel({
               title="Preferred language"
               icon={
                 <Globe
-                  className="size-4 shrink-0 text-[#00d1ff]/90"
+                  className="size-4 shrink-0 text-aurora-cyan/90"
                   aria-hidden
                 />
               }
@@ -272,7 +272,7 @@ export function VoicePanel({
           </div>
 
           <div
-            className="order-1 space-y-1 rounded-xl border border-cyan-400/24 bg-black/60 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-md lg:order-3 lg:-mt-12"
+            className="order-1 space-y-1 rounded-aurora-lg border border-cyan-400/24 bg-black/60 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_rgba(0,0,0,0.4)] backdrop-blur-md lg:order-3 lg:-mt-9 xl:-mt-10"
             aria-label="Voice output"
           >
             <p className="text-[14px] font-medium leading-tight text-white/82">

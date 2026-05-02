@@ -91,6 +91,9 @@ export function Dashboard() {
 
   const voiceLanguageLabel = profile?.language?.trim() || "Default";
 
+  /** Sync mirror for voice upload: snapshot at segment end, not on the next React render. */
+  const liveCaptionMirrorRef = useRef("");
+
   const {
     isHot,
     isListeningUi,
@@ -103,11 +106,12 @@ export function Dashboard() {
   } = useVoiceCapture({
     mode: captureMode,
     busy: voiceUploadBusy,
+    getTranscriptHint: () => liveCaptionMirrorRef.current,
     // While assistant is speaking, keep playback uninterrupted by default.
     // Force-stop is handled via explicit stop phrase detection below.
-    onUtterance: async (blob) => {
+    onUtterance: async (blob, hint) => {
       if (isAssistantSpeaking) return;
-      await sendVoiceBlob(blob, liveUserText);
+      await sendVoiceBlob(blob, hint);
     },
     onBargeIn: stopVoicePlayback,
     // Keep acoustic barge-in enabled so saying "stop" can interrupt reliably
@@ -115,10 +119,14 @@ export function Dashboard() {
     suppressBargeIn: false,
   });
 
+  /** Hands-free: only run Web Speech while VAD sees speech — avoids junk hints during idle noise. */
+  const liveSpeechActive =
+    captureMode === "always" ? isHot && isListeningUi : isHot;
   const { displayText: liveUserText } = useLiveSpeechTranscript(
-    isHot,
+    liveSpeechActive,
     voiceLanguageLabel,
     utteranceSeq,
+    liveCaptionMirrorRef,
   );
   const forceStopLatchRef = useRef(false);
 
@@ -248,8 +256,8 @@ export function Dashboard() {
         </div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-1 sm:gap-3 sm:p-2 md:p-2.5 lg:flex-row lg:gap-3">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden sm:gap-3 lg:min-w-0">
+          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-1 sm:gap-2.5 sm:p-1.5 md:p-2 lg:flex-row lg:gap-3 lg:px-2.5">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden sm:gap-2.5 lg:min-w-0">
               {settingsFocused ? (
                 <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
                   <SettingsWorkspace
@@ -280,7 +288,7 @@ export function Dashboard() {
                 </main>
               ) : memoryFocused ? (
                 <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <div className="mb-2 flex items-center justify-between rounded-xl border border-white/10 bg-white/4 px-3 py-2 text-sm text-white/80 sm:px-4">
+                  <div className="mb-2 flex items-center justify-between rounded-aurora-lg border border-white/10 bg-white/4 px-3 py-2 text-sm text-white/80 sm:px-4">
                     <span className="font-medium">Memory Workspace</span>
                     <span className="text-xs text-white/50">Review and update saved profile context</span>
                   </div>
@@ -297,7 +305,7 @@ export function Dashboard() {
                     className={`grid min-h-0 flex-1 gap-2 overflow-hidden sm:gap-3 ${
                       chatOnly
                         ? "grid-rows-[minmax(0,1fr)]"
-                        : "grid-rows-[minmax(0,min(400px,36svh))_minmax(220px,1fr)]"
+                        : "grid-rows-[minmax(0,min(380px,34svh))_minmax(220px,1fr)]"
                     }`}
                   >
                     <div
@@ -361,7 +369,7 @@ export function Dashboard() {
                     </div>
                   </main>
                   {combinedError ? (
-                    <p className="shrink-0 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-100 sm:text-sm">
+                    <p className="shrink-0 rounded-aurora-md border border-rose-500/30 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-100 sm:text-sm">
                       {combinedError}
                     </p>
                   ) : null}
@@ -382,7 +390,7 @@ export function Dashboard() {
 
             {!memoryFocused && !searchFocused && !settingsFocused && !filesFocused ? (
               <aside
-                className="hidden min-h-0 w-full min-w-0 flex-col gap-4 overflow-y-auto overflow-x-hidden lg:flex lg:w-[min(300px,32vw)] lg:max-w-[320px] lg:shrink-0 xl:w-aurora-context"
+                className="hidden min-h-0 w-aurora-context min-w-0 shrink-0 flex-col gap-3 overflow-y-auto overflow-x-hidden lg:flex xl:gap-4"
                 aria-label="Context panels"
               >
                 {toolsFocused ? (

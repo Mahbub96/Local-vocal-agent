@@ -20,13 +20,13 @@ export function MarkdownText({ text, className = "" }: MarkdownTextProps) {
             const inline = !codeClass;
             if (inline) {
               return (
-                <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.92em]">
+                <code className="rounded-aurora-sm bg-white/10 px-1 py-0.5 font-mono text-[0.92em]">
                   {children}
                 </code>
               );
             }
             return (
-              <code className="block overflow-x-auto whitespace-pre rounded-lg bg-black/35 p-3 font-mono text-[0.9em]">
+              <code className="block overflow-x-auto whitespace-pre rounded-aurora-md bg-black/35 p-3 font-mono text-[0.9em]">
                 {children}
               </code>
             );

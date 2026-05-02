@@ -62,7 +62,7 @@ export function FilesWorkspace() {
   const files = entries.filter((e) => !e.is_dir);
 
   return (
-    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 p-3 sm:p-4">
+    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-aurora-2xl border border-white/10 p-3.5 sm:p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-white">Files Workspace</h3>
@@ -73,38 +73,38 @@ export function FilesWorkspace() {
         <button
           type="button"
           onClick={() => void loadDir(currentPath)}
-          className="inline-flex items-center gap-1 rounded-lg border border-white/12 bg-white/5 px-2 py-1 text-xs text-white/75 transition hover:bg-white/8"
+          className="inline-flex items-center gap-1 rounded-aurora-md border border-white/12 bg-white/5 px-2 py-1 text-xs text-white/75 transition hover:bg-white/8"
         >
           <RefreshCw className="size-3.5" />
           Refresh
         </button>
       </div>
 
-      <div className="mb-2 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/55">
+      <div className="mb-2 rounded-aurora-md border border-white/10 bg-black/25 px-3 py-2 text-xs text-white/55">
         Root: {root || "…"} / {currentPath || "(root)"}
       </div>
 
       {error ? (
-        <p className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+        <p className="mb-3 rounded-aurora-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
           {error}
         </p>
       ) : null}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(240px,320px)_minmax(0,1fr)]">
-        <div className="min-h-0 overflow-y-auto rounded-xl border border-white/10 bg-white/3 p-2">
+        <div className="min-h-0 overflow-y-auto rounded-aurora-lg border border-white/10 bg-white/3 p-2">
           <div className="mb-2 flex gap-2">
             <button
               type="button"
               disabled={!currentPath}
               onClick={() => void loadDir(parentPath)}
-              className="rounded-lg border border-white/12 bg-white/4 px-2 py-1 text-xs text-white/75 disabled:opacity-40"
+              className="rounded-aurora-md border border-white/12 bg-white/4 px-2 py-1 text-xs text-white/75 disabled:opacity-40"
             >
               .. Parent
             </button>
             <button
               type="button"
               onClick={() => void loadDir("")}
-              className="rounded-lg border border-white/12 bg-white/4 px-2 py-1 text-xs text-white/75"
+              className="rounded-aurora-md border border-white/12 bg-white/4 px-2 py-1 text-xs text-white/75"
             >
               Root
             </button>
@@ -116,7 +116,7 @@ export function FilesWorkspace() {
                 key={`d:${e.path}`}
                 type="button"
                 onClick={() => void loadDir(e.path)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-white/85 transition hover:bg-white/8"
+                className="flex w-full items-center gap-2 rounded-aurora-md px-2 py-1.5 text-left text-sm text-white/85 transition hover:bg-white/8"
               >
                 <Folder className="size-4 text-cyan-300/90" />
                 <span className="truncate">{e.name}</span>
@@ -127,7 +127,7 @@ export function FilesWorkspace() {
                 key={`f:${e.path}`}
                 type="button"
                 onClick={() => void loadFile(e.path)}
-                className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                className={`flex w-full items-center gap-2 rounded-aurora-md px-2 py-1.5 text-left text-sm transition ${
                   selectedFilePath === e.path
                     ? "bg-white/10 text-white"
                     : "text-white/78 hover:bg-white/8"
@@ -143,7 +143,7 @@ export function FilesWorkspace() {
           </div>
         </div>
 
-        <div className="min-h-0 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+        <div className="min-h-0 overflow-hidden rounded-aurora-lg border border-white/10 bg-black/30">
           <div className="border-b border-white/10 px-3 py-2 text-xs text-white/60">
             {selectedFilePath || "Select a file to preview"}
           </div>

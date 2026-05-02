@@ -1,4 +1,14 @@
+import type { MutableRefObject } from "react";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+
+function joinDisplay(finalChunk: string, interimChunk: string): string {
+  const f = finalChunk.trim();
+  const i = interimChunk.trim();
+  if (!f && !i) return "";
+  if (!i) return f;
+  if (!f) return i;
+  return `${f} ${i}`.trim();
+}
 
 /** Ordered `SpeechRecognition.lang` codes to try (Bangla: Chromium often accepts bn-IN where bn-BD fails). */
 export function speechRecognitionLangCandidates(languageLabel: string): readonly string[] {
@@ -37,10 +47,14 @@ export function useLiveSpeechTranscript(
   active: boolean,
   languageLabel: string,
   utteranceSeq = 0,
+  /** Optional: same text as `displayText`, for parents that need a sync read (e.g. voice segment snapshot). */
+  mirrorRef?: MutableRefObject<string>,
 ) {
   const [finalText, setFinalText] = useState("");
   const [interimText, setInterimText] = useState("");
   const accumulatedRef = useRef("");
+  /** Same as `displayText`, updated synchronously in `onresult` so voice upload can snapshot at segment end. */
+  const displayTextRef = useRef("");
   const activeRef = useRef(active);
   useEffect(() => {
     activeRef.current = active;
@@ -53,33 +67,35 @@ export function useLiveSpeechTranscript(
 
   useEffect(() => {
     accumulatedRef.current = "";
+    displayTextRef.current = "";
+    if (mirrorRef) mirrorRef.current = "";
     startTransition(() => {
       setFinalText("");
       setInterimText("");
     });
-  }, [utteranceSeq]);
+  }, [utteranceSeq, mirrorRef]);
 
-  const displayText = useMemo(() => {
-    const f = finalText.trim();
-    const i = interimText.trim();
-    if (!f && !i) return "";
-    if (!i) return f;
-    if (!f) return i;
-    return `${f} ${i}`.trim();
-  }, [finalText, interimText]);
+  const displayText = useMemo(
+    () => joinDisplay(finalText, interimText),
+    [finalText, interimText],
+  );
 
   useEffect(() => {
     if (!active) {
+      displayTextRef.current = "";
+      if (mirrorRef) mirrorRef.current = "";
       startTransition(() => {
         setFinalText("");
         setInterimText("");
       });
     }
-  }, [active]);
+  }, [active, mirrorRef]);
 
   useEffect(() => {
     if (!active) return;
 
+    displayTextRef.current = "";
+    if (mirrorRef) mirrorRef.current = "";
     startTransition(() => {
       setFinalText("");
       setInterimText("");
@@ -146,7 +162,11 @@ export function useLiveSpeechTranscript(
             setFinalText(accumulatedRef.current);
           }
           if (interim.trim()) heardAnyToken = true;
-          setInterimText(interim.trim());
+          const interimTrim = interim.trim();
+          setInterimText(interimTrim);
+          const d = joinDisplay(accumulatedRef.current, interimTrim);
+          displayTextRef.current = d;
+          if (mirrorRef) mirrorRef.current = d;
         };
 
         r.onerror = (ev: Event) => {
@@ -196,9 +216,9 @@ export function useLiveSpeechTranscript(
       tearDownRec();
       startTransition(() => setInterimText(""));
     };
-  }, [active, langCandidates, utteranceSeq]);
+  }, [active, langCandidates, utteranceSeq, mirrorRef]);
 
   const supported = typeof window !== "undefined" && getSpeechRecognitionCtor() !== null;
 
-  return { displayText, supported };
+  return { displayText, displayTextRef, supported };
 }

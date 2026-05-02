@@ -1,0 +1,20 @@
+# Same as requirements.txt but omits Coqui TTS (heavy; not needed for unit tests).
+# CI and local test-only venvs: pip install -r requirements-ci.txt -r requirements-dev.txt
+# Full app with voice: pip install -r requirements.txt -r requirements-dev.txt
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sqlalchemy>=2.0.35
+greenlet>=3.1.1
+aiosqlite>=0.20.0
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+chromadb>=0.5.5
+httpx>=0.27.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+duckduckgo-search>=6.2.11
+ddgs>=7.2.1
+faster-whisper>=1.0.3
+python-multipart>=0.0.9
+psutil

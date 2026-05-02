@@ -58,23 +58,23 @@ export function SystemStatus({ metrics }: SystemStatusProps) {
   ];
 
   const barFill =
-    "h-full rounded-full bg-linear-to-r from-[#00d2ff] to-[#9d50bb] shadow-[0_0_14px_rgba(0,210,255,0.35),0_0_18px_rgba(157,80,187,0.25)]";
+    "h-full rounded-full bg-linear-to-r from-aurora-cyan to-aurora-purple shadow-[0_0_14px_rgba(0,210,255,0.35),0_0_18px_rgba(157,80,187,0.25)]";
 
   return (
     <section
-      className="rounded-[26px] border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,40,0.94),rgba(10,14,26,0.94))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(0,0,0,0.35)]"
+      className="aurora-glass rounded-aurora-2xl border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,40,0.94),rgba(10,14,26,0.94))] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(0,0,0,0.35)] md:p-4"
       aria-label="System status"
     >
-      <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+      <h4 className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
         System Status
       </h4>
-      <div className="mb-3 h-10 overflow-hidden rounded-xl border border-white/8 bg-[#090d1c] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="mb-3 h-10 overflow-hidden rounded-aurora-lg border border-white/8 bg-aurora-rail shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         {sparkPath ? (
           <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
             <defs>
               <linearGradient id="aurora-spark" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#00d2ff" />
-                <stop offset="100%" stopColor="#9d50bb" />
+                <stop offset="0%" stopColor="var(--color-aurora-cyan)" />
+                <stop offset="100%" stopColor="var(--color-aurora-purple)" />
               </linearGradient>
             </defs>
             <path
@@ -86,10 +86,10 @@ export function SystemStatus({ metrics }: SystemStatusProps) {
             />
           </svg>
         ) : (
-          <div className="h-full w-full bg-linear-to-r from-[#00d2ff]/12 to-aurora-purple/12" />
+          <div className="h-full w-full bg-linear-to-r from-aurora-cyan/12 to-aurora-purple/12" />
         )}
       </div>
-      <ul className="space-y-2.5">
+      <ul className="space-y-2">
         {rows.map((row) => (
           <li key={row.key} className="flex items-center gap-2 text-xs">
             <span className="w-8 shrink-0 text-xs tracking-[0.04em] text-white/80">{row.key}</span>

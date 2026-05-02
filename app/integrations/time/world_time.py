@@ -8,7 +8,16 @@ from typing import Final
 
 import httpx
 
+from app.integrations.time.clock_parse import extract_iso_clock_from_time_line
+
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "extract_iso_clock_from_time_line",
+    "fetch_local_time_utc_string",
+    "refine_search_query_for_tool",
+    "resolve_timezone_for_query",
+]
 
 # (user-text pattern, IANA zone for worldtimeapi). Include "bangladeshi" / partial matches.
 _ZONE_RULES: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
@@ -100,12 +109,6 @@ async def fetch_local_time_utc_string(zone: str) -> str | None:
             return line
     logger.warning("All time APIs failed for zone %s", zone)
     return None
-
-
-def extract_iso_clock_from_time_line(time_line: str) -> str | None:
-    """Pull 'YYYY-MM-DD HH:MM:SS' from our formatted LIVE TIME line for safe substitution."""
-    m = re.search(r":\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\b", time_line)
-    return m.group(1) if m else None
 
 
 def refine_search_query_for_tool(query: str) -> str:

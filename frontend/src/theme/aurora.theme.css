@@ -72,5 +72,10 @@
 
   /* ─── Layout ─── */
   --width-aurora-rail: 140px;
-  --width-aurora-context: 300px;
+  /* Right context column (thinking / memory / tools stack) */
+  --width-aurora-context: 292px;
+  /* Top chrome — single height for alignment with reference shell */
+  --height-aurora-topbar: 3.5rem;
+  /* Bottom metrics strip — compact baseline height */
+  --min-height-aurora-statusbar: 2.25rem;
 }

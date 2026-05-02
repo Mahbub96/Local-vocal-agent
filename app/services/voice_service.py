@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import difflib
 import json
 import re
 from pathlib import Path
@@ -253,14 +252,6 @@ class VoiceService:
                         and contains_bengali_script(hint)
                         and not contains_bengali_script(transcript)
                     )
-                    or (
-                        len(hint) >= 8
-                        and len(transcript) >= 8
-                        and difflib.SequenceMatcher(
-                            a=hint.lower(), b=transcript.lower()
-                        ).ratio()
-                        < 0.35
-                    )
                 ):
                     transcript = hint
             return transcript, prof, extra_paths
@@ -397,6 +388,7 @@ class VoiceService:
                     user_id=user_id,
                     include_tts=True,
                     defer_tts=False,
+                    voice_turn=True,
                 )
                 prof_after: dict[str, object] = {}
                 if user_id:
@@ -555,6 +547,7 @@ class VoiceService:
                     message=transcript,
                     session_id=session_id,
                     user_id=user_id,
+                    voice_turn=True,
                 ):
                     if chunk.startswith("event: token"):
                         yield chunk

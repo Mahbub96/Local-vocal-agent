@@ -85,7 +85,7 @@ export function SettingsWorkspace({
   };
 
   return (
-    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 p-3 sm:p-4">
+    <section className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-aurora-2xl border border-white/10 p-3.5 sm:p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-white">Settings</h3>
@@ -94,7 +94,7 @@ export function SettingsWorkspace({
           </p>
         </div>
         {savedNote ? (
-          <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200">
+          <span className="rounded-aurora-md border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-200">
             {savedNote}
           </span>
         ) : null}
@@ -147,13 +147,13 @@ export function SettingsWorkspace({
           <input className="aurora-field" value={form.assistant_wake_name ?? ""} onChange={(e) => setForm((f) => ({ ...f, assistant_wake_name: e.target.value.trim() || null }))} />
         </label>
 
-        <div className="rounded-xl border border-white/10 bg-white/3 px-3 py-2.5 md:col-span-2">
+        <div className="rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5 md:col-span-2">
           <p className="mb-2 text-sm font-medium text-white/90">Voice capture mode</p>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => onCaptureModeChange("always")}
-              className={`rounded-lg px-3 py-1.5 text-xs ${
+              className={`rounded-aurora-md px-3 py-1.5 text-xs ${
                 captureMode === "always"
                   ? "border border-cyan-300/30 bg-cyan-400/12 text-cyan-100"
                   : "border border-white/10 bg-white/5 text-white/65"
@@ -164,7 +164,7 @@ export function SettingsWorkspace({
             <button
               type="button"
               onClick={() => onCaptureModeChange("push")}
-              className={`rounded-lg px-3 py-1.5 text-xs ${
+              className={`rounded-aurora-md px-3 py-1.5 text-xs ${
                 captureMode === "push"
                   ? "border border-cyan-300/30 bg-cyan-400/12 text-cyan-100"
                   : "border border-white/10 bg-white/5 text-white/65"
@@ -175,7 +175,7 @@ export function SettingsWorkspace({
           </div>
         </div>
 
-        <label className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/3 px-3 py-2.5 md:col-span-2">
+        <label className="flex items-start gap-2.5 rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5 md:col-span-2">
           <input
             type="checkbox"
             className="mt-0.5 size-4 rounded border-white/25 accent-cyan-500"
@@ -195,7 +195,7 @@ export function SettingsWorkspace({
           type="button"
           onClick={() => void save()}
           disabled={saving || !dirty}
-          className="rounded-xl border border-cyan-300/30 bg-cyan-400/12 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/18 disabled:opacity-45"
+          className="rounded-aurora-lg border border-cyan-300/30 bg-cyan-400/12 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-400/18 disabled:opacity-45"
         >
           {saving ? "Saving..." : "Save settings"}
         </button>

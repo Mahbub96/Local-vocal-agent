@@ -134,7 +134,7 @@ export function ChatPanel({
 
   return (
     <section
-      className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-white/8 bg-[#05070a]/35"
+      className="aurora-glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-aurora-2xl border border-white/8 bg-aurora-canvas/35"
       aria-label="Chat"
     >
       <span className="sr-only">Session: {title}</span>
@@ -172,7 +172,7 @@ export function ChatPanel({
                 type="button"
                 onClick={() => void handleTurnOffSilentMode()}
                 disabled={turningOffSilent || loading}
-                className="shrink-0 rounded-lg border border-amber-400/35 bg-amber-500/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-50 transition hover:bg-amber-500/30 disabled:opacity-50"
+                className="shrink-0 rounded-aurora-md border border-amber-400/35 bg-amber-500/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-50 transition hover:bg-amber-500/30 disabled:opacity-50"
               >
                 {turningOffSilent ? "Saving…" : "Turn off silent mode"}
               </button>
@@ -184,7 +184,7 @@ export function ChatPanel({
       <div
         ref={chatListRef}
         onScroll={handleChatListScroll}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-2 py-2 sm:space-y-4 sm:px-3 sm:py-3"
+        className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overflow-x-hidden px-2.5 py-2 sm:space-y-3.5 sm:px-3 sm:py-2.5"
       >
         {messages.map((msg) => {
           const isUser = msg.role === "user";
@@ -197,7 +197,7 @@ export function ChatPanel({
             >
               {isUser ? (
                 <div
-                  className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-2xl bg-linear-to-br from-purple-500/35 to-indigo-600/40 ring-1 ring-purple-400/30"
+                  className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-aurora-xl bg-linear-to-br from-purple-500/35 to-indigo-600/40 ring-1 ring-purple-400/30"
                   aria-hidden
                 >
                   <svg
@@ -211,7 +211,7 @@ export function ChatPanel({
                 </div>
               ) : (
                 <div
-                  className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-2xl bg-slate-950/80 ring-1 ring-cyan-400/35"
+                  className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-aurora-xl bg-slate-950/80 ring-1 ring-cyan-400/35"
                   aria-hidden
                 >
                   <svg className="size-7" viewBox="0 0 24 24" aria-hidden>
@@ -223,8 +223,8 @@ export function ChatPanel({
                         x2="100%"
                         y2="100%"
                       >
-                        <stop offset="0%" stopColor="#00d2ff" />
-                        <stop offset="100%" stopColor="#9d50bb" />
+                        <stop offset="0%" stopColor="var(--color-aurora-cyan)" />
+                        <stop offset="100%" stopColor="var(--color-aurora-purple)" />
                       </linearGradient>
                     </defs>
                     <circle
@@ -248,7 +248,7 @@ export function ChatPanel({
                 </div>
               )}
               <div
-                className={`min-w-0 flex-1 rounded-xl border px-3 py-2.5 ${
+                className={`min-w-0 flex-1 rounded-aurora-lg border px-3 py-2.5 ${
                   isUser
                     ? "border-purple-500/25 bg-purple-500/8 shadow-[0_0_16px_rgba(168,85,247,0.1)]"
                     : "border-aurora-border bg-white/4"
@@ -278,7 +278,7 @@ export function ChatPanel({
                   >
                     <button
                       type="button"
-                      className="rounded-lg p-2 text-white/45 transition hover:bg-white/6 hover:text-white disabled:opacity-40"
+                      className="rounded-aurora-md p-2 text-white/45 transition hover:bg-white/6 hover:text-white disabled:opacity-40"
                       title="Read aloud (TTS when enabled)"
                       aria-label="Speak"
                       disabled
@@ -287,7 +287,7 @@ export function ChatPanel({
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg p-2 text-white/45 transition hover:bg-white/6 hover:text-white"
+                      className="rounded-aurora-md p-2 text-white/45 transition hover:bg-white/6 hover:text-white"
                       onClick={() => void copy(msg.content)}
                       title="Copy"
                       aria-label="Copy"
@@ -296,7 +296,7 @@ export function ChatPanel({
                     </button>
                     <button
                       type="button"
-                      className={`rounded-lg p-2 transition hover:bg-white/6 ${selected === "like" ? "text-emerald-300" : "text-white/45 hover:text-white"}`}
+                      className={`rounded-aurora-md p-2 transition hover:bg-white/6 ${selected === "like" ? "text-emerald-300" : "text-white/45 hover:text-white"}`}
                       onClick={() =>
                         void feedback(
                           msg.id,
@@ -311,7 +311,7 @@ export function ChatPanel({
                     </button>
                     <button
                       type="button"
-                      className={`rounded-lg p-2 transition hover:bg-white/6 ${selected === "dislike" ? "text-rose-300" : "text-white/45 hover:text-white"}`}
+                      className={`rounded-aurora-md p-2 transition hover:bg-white/6 ${selected === "dislike" ? "text-rose-300" : "text-white/45 hover:text-white"}`}
                       onClick={() =>
                         void feedback(
                           msg.id,
@@ -333,12 +333,12 @@ export function ChatPanel({
         {streamingAssistantText ? (
           <div className="flex gap-3" aria-live="polite" aria-busy="true">
             <div
-              className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-2xl bg-slate-950/80 ring-1 ring-cyan-400/35"
+              className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-aurora-xl bg-slate-950/80 ring-1 ring-cyan-400/35"
               aria-hidden
             >
               <span className="text-xs font-bold text-cyan-300">A</span>
             </div>
-            <div className="min-w-0 flex-1 rounded-xl border border-aurora-border bg-white/4 px-3 py-2.5">
+            <div className="min-w-0 flex-1 rounded-aurora-lg border border-aurora-border bg-white/4 px-3 py-2.5">
               <div className="mb-1 flex flex-wrap items-baseline gap-2">
                 <span className="text-sm font-semibold text-cyan-200/90">
                   Aurora
@@ -360,12 +360,12 @@ export function ChatPanel({
         {messages.length === 0 && !streamingAssistantText ? (
           <div className="flex gap-3">
             <div
-              className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-2xl bg-slate-950/80 ring-1 ring-cyan-400/35"
+              className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-aurora-xl bg-slate-950/80 ring-1 ring-cyan-400/35"
               aria-hidden
             >
               <span className="text-xs font-bold text-cyan-300">A</span>
             </div>
-            <div className="min-w-0 flex-1 rounded-xl border border-aurora-border bg-white/4 px-3 py-2.5">
+            <div className="min-w-0 flex-1 rounded-aurora-lg border border-aurora-border bg-white/4 px-3 py-2.5">
               <p className="text-sm font-semibold text-cyan-200/90">Aurora</p>
               <p className="mt-1 text-sm text-white/65">
                 Send a message to start. Your session is connected to the local
@@ -378,13 +378,13 @@ export function ChatPanel({
 
       <form
         onSubmit={handleSubmit}
-        className="relative z-10 shrink-0 border-t border-white/10 bg-[#06080f]/95 p-3 shadow-[0_-16px_48px_rgba(0,0,0,0.55)] backdrop-blur-md md:p-4"
+        className="relative z-10 shrink-0 border-t border-white/10 bg-aurora-rail/95 p-2.5 shadow-[0_-16px_48px_rgba(0,0,0,0.55)] backdrop-blur-md sm:p-3 md:p-3.5"
       >
-        <div className="flex items-end gap-2 rounded-2xl border border-cyan-400/25 bg-[#0a0e16]/95 px-2 py-2 shadow-[0_0_0_1px_rgba(0,209,255,0.18),0_4px_28px_rgba(0,209,255,0.08),0_12px_40px_rgba(0,0,0,0.45)] ring-1 ring-cyan-400/20 md:gap-3 md:px-3">
+        <div className="flex items-end gap-2 rounded-aurora-xl border border-cyan-400/25 bg-aurora-canvas/95 px-2 py-2 shadow-[0_0_0_1px_rgba(0,209,255,0.18),0_4px_28px_rgba(0,209,255,0.08),0_12px_40px_rgba(0,0,0,0.45)] ring-1 ring-cyan-400/20 md:gap-3 md:px-3">
           <div className="flex shrink-0 gap-0.5 pb-1.5 text-white/45">
             <button
               type="button"
-              className="grid place-items-center rounded-lg p-2 transition hover:bg-white/6 hover:text-white"
+              className="grid place-items-center rounded-aurora-md p-2 transition hover:bg-white/6 hover:text-white"
               title="Attachments"
               aria-label="Attachment"
             >
@@ -392,7 +392,7 @@ export function ChatPanel({
             </button>
             <button
               type="button"
-              className="grid place-items-center rounded-lg p-2 transition hover:bg-white/6 hover:text-white"
+              className="grid place-items-center rounded-aurora-md p-2 transition hover:bg-white/6 hover:text-white"
               title="Web search"
               aria-label="Web search"
             >
@@ -443,7 +443,7 @@ export function ChatPanel({
           </button>
           <button
             type="submit"
-            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-lg bg-linear-to-br from-aurora-cyan to-indigo-600 text-aurora-canvas shadow-[0_0_28px_rgba(0,210,255,0.45)] transition hover:brightness-110 disabled:opacity-50"
+            className="mb-0.5 grid size-11 shrink-0 place-items-center rounded-aurora-md bg-linear-to-br from-aurora-cyan to-indigo-600 text-aurora-canvas shadow-[0_0_28px_rgba(0,210,255,0.45)] transition hover:brightness-110 disabled:opacity-50"
             disabled={loading}
             title="Send"
             aria-label="Send message"

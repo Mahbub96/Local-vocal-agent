@@ -64,6 +64,7 @@ class ChatService:
         user_id: str | None = None,
         include_tts: bool = False,
         defer_tts: bool = False,
+        voice_turn: bool = False,
     ) -> ChatResponse:
         normalized_message = self._prepare_message(message)
         if not normalized_message:
@@ -176,7 +177,11 @@ class ChatService:
 
         agent_base = cfg.stripped_query if cfg.stripped_query.strip() else normalized_message
         agent_query = self._agent_query_after_wake_strip(agent_base, memory_context.user_profile)
-        agent_result = await self.agent.run(query=agent_query, memory_context=memory_context)
+        agent_result = await self.agent.run(
+            query=agent_query,
+            memory_context=memory_context,
+            voice_turn=voice_turn,
+        )
         final_reply = str(agent_result["response"])
         if cfg.confirmation_note:
             final_reply = f"{cfg.confirmation_note}\n\n{final_reply}"
@@ -242,6 +247,7 @@ class ChatService:
         message: str,
         session_id: str | None = None,
         user_id: str | None = None,
+        voice_turn: bool = False,
     ) -> AsyncIterator[str]:
         """SSE lines: `token` deltas, then `done` with ChatResponse JSON."""
         try:
@@ -365,6 +371,7 @@ class ChatService:
                 async for item in self.agent.stream_run(
                     query=agent_query,
                     memory_context=memory_context,
+                    voice_turn=voice_turn,
                 ):
                     if isinstance(item, str):
                         yield f"event: token\ndata: {json.dumps({'t': item})}\n\n"

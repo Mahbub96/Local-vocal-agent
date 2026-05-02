@@ -20,7 +20,7 @@ export function TopBar({ onThemeToggle, userInitial, onMenuClick }: TopBarProps)
   return (
     <div
       className={cn(
-        "aurora-topbar relative flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4 md:h-16 md:px-6",
+        "aurora-topbar relative flex h-aurora-topbar shrink-0 items-center gap-2 px-3 sm:px-4 md:px-5",
       )}
       role="banner"
     >
@@ -51,7 +51,7 @@ export function TopBar({ onThemeToggle, userInitial, onMenuClick }: TopBarProps)
             <span className="sm:hidden">AURORA</span>
             <span className="hidden sm:inline">AURORA AI ASSISTANT</span>
           </span>
-          <WaveformIcon className="hidden h-3 w-10 shrink-0 text-[#00d2ff]/90 sm:block sm:w-12" />
+          <WaveformIcon className="hidden h-3 w-10 shrink-0 text-aurora-cyan/90 sm:block sm:w-12" />
         </div>
       </div>
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2 md:gap-3">
@@ -70,7 +70,7 @@ export function TopBar({ onThemeToggle, userInitial, onMenuClick }: TopBarProps)
           {isLight ? <Moon className="size-[18px]" strokeWidth={1.75} /> : <Sun className="size-[18px]" strokeWidth={1.75} />}
         </IconButton>
         <div
-          className="grid size-10 place-items-center rounded-full bg-linear-to-br from-[#9d50bb]/45 to-[#00d2ff]/35 text-sm font-semibold text-aurora-fg shadow-[0_0_28px_rgba(157,80,187,0.4)] ring-2 ring-white/15"
+          className="grid size-10 place-items-center rounded-full bg-linear-to-br from-aurora-purple/45 to-aurora-cyan/35 text-sm font-semibold text-aurora-fg shadow-[0_0_28px_rgba(157,80,187,0.4)] ring-2 ring-white/15"
           role="img"
           aria-label="User profile"
         >

@@ -44,6 +44,19 @@ cp .env.example .env
 cd frontend && npm install
 ```
 
+## Backend tests
+
+Install backend + dev tools (same subset as CI; omits Coqui `TTS`, which unit tests do not need):
+
+```bash
+pip install -r requirements-ci.txt -r requirements-dev.txt
+./scripts/run_tests.sh
+```
+
+For the full app including TTS, use `requirements.txt` as in Manual Setup.
+
+If you add or remove packages in `requirements.txt`, update `requirements-ci.txt` to match (same lines minus `TTS`). CI runs `python scripts/check_requirements_ci_sync.py` to enforce that.
+
 ## Manual Run
 
 Backend:

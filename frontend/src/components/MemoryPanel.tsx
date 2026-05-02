@@ -97,10 +97,10 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
 
   return (
     <section
-      className="aurora-glass rounded-3xl border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,44,0.92),rgba(10,14,28,0.95))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(0,0,0,0.22)] md:p-5"
+      className="aurora-glass rounded-aurora-2xl border border-white/12 bg-[linear-gradient(180deg,rgba(18,24,44,0.92),rgba(10,14,28,0.95))] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_20px_rgba(0,0,0,0.22)] md:p-4"
       aria-label="Memory"
     >
-      <div className="mb-4 flex items-start justify-between gap-2">
+      <div className="mb-3 flex items-start justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold tracking-tight text-white">Known about you</h3>
           <p className="mt-0.5 text-[11px] text-white/45">Persistent profile context used by chat and voice.</p>
@@ -113,7 +113,7 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
             </button>
             <button
               type="button"
-              className="rounded-lg bg-purple-500/25 px-2.5 py-1 font-medium text-purple-100 ring-1 ring-purple-400/35 hover:bg-purple-500/35"
+              className="rounded-aurora-md bg-purple-500/25 px-2.5 py-1 font-medium text-purple-100 ring-1 ring-purple-400/35 hover:bg-purple-500/35"
               onClick={() => void save()}
               disabled={saving}
             >
@@ -132,7 +132,7 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
             <button
               type="button"
               onClick={startEdit}
-              className="rounded-xl border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 text-xs text-cyan-100/95 ring-1 ring-cyan-200/15 transition hover:bg-cyan-300/14"
+              className="rounded-aurora-lg border border-cyan-300/25 bg-cyan-300/10 px-2.5 py-1 text-xs text-cyan-100/95 ring-1 ring-cyan-200/15 transition hover:bg-cyan-300/14"
             >
               Edit
             </button>
@@ -226,7 +226,7 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
               is on, start speech with this name, or say “call yourself Luna” in chat or voice.
             </span>
           </label>
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-white/10 bg-white/3 px-3 py-2.5">
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-aurora-lg border border-white/10 bg-white/3 px-3 py-2.5">
             <input
               type="checkbox"
               className="mt-0.5 size-4 shrink-0 rounded border-white/25 accent-cyan-500"
@@ -243,11 +243,11 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
           </label>
         </div>
       ) : (
-        <ul className="grid gap-2.5">
+        <ul className="grid gap-2">
           {rows.map((row) => (
             <li
               key={row.label}
-              className="grid grid-cols-[6.2rem_minmax(0,1fr)] items-center gap-2 rounded-xl border border-white/8 bg-white/2 px-2.5 py-2"
+              className="grid grid-cols-[6.2rem_minmax(0,1fr)] items-center gap-2 rounded-aurora-lg border border-white/8 bg-white/2 px-2.5 py-2"
             >
               <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-aurora-fg-muted/90">{row.label}</span>
               <span className="truncate text-sm font-medium text-white/92">{row.value}</span>

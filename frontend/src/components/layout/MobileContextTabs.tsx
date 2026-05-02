@@ -34,7 +34,7 @@ export function MobileContextTabs({
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden lg:hidden">
       <div
-        className="flex shrink-0 gap-1 rounded-2xl border border-white/10 bg-black/30 p-1"
+        className="flex shrink-0 gap-1 rounded-aurora-xl border border-white/10 bg-black/30 p-1"
         role="tablist"
         aria-label="Context panels"
       >
@@ -44,7 +44,7 @@ export function MobileContextTabs({
             type="button"
             role="tab"
             aria-selected={tab === t.id}
-            className={`min-h-11 flex-1 rounded-xl px-2 py-2 text-center text-xs font-medium transition sm:text-sm ${
+            className={`min-h-11 flex-1 rounded-aurora-lg px-2 py-2 text-center text-xs font-medium transition sm:text-sm ${
               tab === t.id
                 ? "bg-white/10 text-white shadow-[0_0_16px_rgba(59,130,246,0.2)]"
                 : "text-white/50 hover:bg-white/4 hover:text-white/80"

@@ -1,0 +1,2 @@
+# Dev / CI — install on top of requirements.txt
+pytest>=8.0
