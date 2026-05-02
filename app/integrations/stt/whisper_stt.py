@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 from faster_whisper import WhisperModel
@@ -8,6 +9,7 @@ from faster_whisper import WhisperModel
 from app.core.settings import get_settings
 
 
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
@@ -21,19 +23,32 @@ class WhisperSTTService:
 
     def _get_model(self) -> WhisperModel:
         if self._model is None:
-            self._model = WhisperModel(self.model_size, device=self.device)
+            self._model = WhisperModel(
+                self.model_size,
+                device=self.device,
+                compute_type=settings.stt_compute_type,
+            )
         return self._model
 
-    async def transcribe(self, audio_path: Path) -> str:
-        return await asyncio.to_thread(self._transcribe_sync, audio_path)
+    async def transcribe(self, audio_path: Path, *, language: str | None = None) -> str:
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self._transcribe_sync, audio_path, language),
+                timeout=settings.stt_transcribe_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            logger.error("STT timed out after %s s for %s", settings.stt_transcribe_timeout_seconds, audio_path.name)
+            raise
 
-    def _transcribe_sync(self, audio_path: Path) -> str:
+    def _transcribe_sync(self, audio_path: Path, language: str | None) -> str:
         model = self._get_model()
-        segments, _info = model.transcribe(
-            str(audio_path),
-            beam_size=settings.stt_beam_size,
-            temperature=settings.stt_temperature,
-            vad_filter=settings.stt_vad_filter,
-            vad_parameters={"min_silence_duration_ms": settings.stt_vad_min_silence_ms},
-        )
+        kwargs: dict = {
+            "beam_size": settings.stt_beam_size,
+            "temperature": settings.stt_temperature,
+            "vad_filter": settings.stt_vad_filter,
+            "vad_parameters": {"min_silence_duration_ms": settings.stt_vad_min_silence_ms},
+        }
+        if language:
+            kwargs["language"] = language
+        segments, _info = model.transcribe(str(audio_path), **kwargs)
         return " ".join(segment.text.strip() for segment in segments).strip()

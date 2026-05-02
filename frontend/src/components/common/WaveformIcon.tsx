@@ -14,7 +14,7 @@ export function WaveformIcon({ className }: WaveformIconProps) {
       {bars.map((h, i) => {
         const x = 2 + i * 3.5;
         const y = 10 - h;
-        return <rect className="waveform-icon__bar" key={i} x={x} y={y} width="2" height={h} rx="0.5" fill="currentColor" />;
+        return <rect key={i} x={x} y={y} width="2" height={h} rx="0.5" fill="currentColor" opacity={0.75} />;
       })}
     </svg>
   );

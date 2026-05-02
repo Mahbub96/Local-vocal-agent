@@ -1,0 +1,76 @@
+/**
+ * Aurora design system — single source of truth for Tailwind v4 @theme tokens.
+ * Import after `tailwindcss` in index.css. Use utilities: bg-aurora-canvas, text-aurora-fg-muted, etc.
+ */
+
+@theme {
+  /* ─── Typography ─── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* ─── Canvas & chrome (reference: deep navy #0b0d17, neon accents) ─── */
+  --color-aurora-canvas: #0b0d17;
+  --color-aurora-rail: #080b14;
+  --color-aurora-panel: rgb(15 18 30 / 0.78);
+
+  /* ─── Foreground (text) ─── */
+  --color-aurora-fg: #f8fafc;
+  --color-aurora-fg-secondary: rgb(203 213 225);
+  --color-aurora-fg-muted: rgb(148 163 184);
+  --color-aurora-fg-subtle: rgb(100 116 139);
+  --color-aurora-fg-inverse: #0f172a;
+
+  /* ─── Borders & hairlines ─── */
+  --color-aurora-border: rgb(255 255 255 / 0.1);
+  --color-aurora-border-strong: rgb(255 255 255 / 0.12);
+  --color-aurora-border-accent: rgb(34 211 238 / 0.35);
+  --color-aurora-divider: rgb(255 255 255 / 0.06);
+
+  /* ─── Surfaces (glass / fills) ─── */
+  --color-aurora-surface: rgb(255 255 255 / 0.04);
+  --color-aurora-surface-hover: rgb(255 255 255 / 0.08);
+  --color-aurora-surface-pressed: rgb(255 255 255 / 0.1);
+  --color-aurora-overlay: rgb(0 0 0 / 0.6);
+
+  /* ─── Brand accents (neon: purple #9d50bb, electric blue #00d2ff) ─── */
+  --color-aurora-cyan: #00d2ff;
+  --color-aurora-blue: #00d2ff;
+  --color-aurora-purple: #9d50bb;
+  --color-aurora-pink: #ec4899;
+  --color-aurora-amber: #fbbf24;
+  --color-aurora-emerald: #34d399;
+  --color-aurora-rose: #fb7185;
+
+  /* ─── Semantic states ─── */
+  --color-aurora-success: #34d399;
+  --color-aurora-warning: #fbbf24;
+  --color-aurora-danger: #fb7185;
+
+  /* ─── Navigation ─── */
+  --color-aurora-nav-active-bg: rgb(157 80 187 / 0.22);
+  --color-aurora-nav-active-ring: rgb(0 210 255 / 0.22);
+  --color-aurora-nav-icon-active: #e9d5ff;
+  --color-aurora-nav-icon: rgb(255 255 255 / 0.45);
+  --color-aurora-nav-icon-hover: #67e8f9;
+
+  /* ─── Voice / chat highlights ─── */
+  --color-aurora-user-bubble-border: rgb(168 85 247 / 0.25);
+  --color-aurora-user-bubble-bg: rgb(168 85 247 / 0.08);
+  --color-aurora-assistant-accent: #67e8f9;
+
+  /* Voice panel (reference: captions, status dots) */
+  --color-aurora-voice-caption: #9ca3af;
+  --color-aurora-voice-live: #22c55e;
+  --color-aurora-voice-output-dot: #38bdf8;
+
+  /* ─── Radius scale (use rounded-aurora-*) ─── */
+  --radius-aurora-sm: 0.625rem;
+  --radius-aurora-md: 0.75rem;
+  --radius-aurora-lg: 1rem;
+  --radius-aurora-xl: 1.25rem;
+  --radius-aurora-2xl: 1.5rem;
+  --radius-aurora-3xl: 1.75rem;
+
+  /* ─── Layout ─── */
+  --width-aurora-rail: 250px;
+  --width-aurora-context: 300px;
+}

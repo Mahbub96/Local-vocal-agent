@@ -8,7 +8,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import psutil
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,6 +57,32 @@ from app.services.voice_service import VoiceService
 router = APIRouter()
 settings = get_settings()
 APP_START_TIME = time.time()
+
+
+def _tts_public_path(audio_path: str | None) -> str | None:
+    """Relative URL segment under the API prefix (for clients: `{api_base}/{path}`)."""
+    if not audio_path:
+        return None
+    name = Path(str(audio_path)).name
+    if not name:
+        return None
+    return f"tts/audio/{name}"
+
+
+def _resolved_tts_file(filename: str) -> Path:
+    """Single file under `tts_output_dir` (no traversal)."""
+    name = Path(filename).name
+    if not name or name != filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename.")
+    base = settings.tts_output_dir.resolve()
+    candidate = (base / name).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Audio not found.") from exc
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="Audio not found.")
+    return candidate
 SESSION_NOT_FOUND_DETAIL = "Session not found."
 MAX_FILE_READ_BYTES = 1_000_000
 MAX_FILE_SEARCH_BYTES = 500_000
@@ -135,11 +161,40 @@ async def chat(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.post("/chat/stream")
+async def chat_stream(
+    payload: ChatRequest,
+    db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
+) -> StreamingResponse:
+    """SSE: `token` events with JSON `{"t":"..."}`, then `done` with `ChatResponse` fields."""
+
+    service = ChatService(db_session)
+
+    async def event_generator():
+        async for chunk in service.handle_chat_stream(
+            message=payload.message,
+            session_id=payload.session_id,
+            user_id=payload.user_id,
+        ):
+            yield chunk.encode("utf-8")
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post(
     "/voice-chat",
     responses={
         400: {"description": "Uploaded audio file is empty."},
         422: {"description": "Unable to extract text from audio."},
+        504: {"description": "Speech recognition timed out."},
     },
 )
 async def voice_chat(
@@ -167,11 +222,17 @@ async def voice_chat(
             detail="Voice response ready",
             audio_level=58.0,
         )
-        return result
+        return result.model_copy(update={"audio_url": _tts_public_path(result.audio_path)})
     finally:
         # Keep "speaking" state briefly for UI transition.
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.05)
         await voice_status_service.set_state("idle", detail="Waiting for input")
+
+
+@router.get("/tts/audio/{filename}")
+async def stream_tts_audio(filename: str) -> FileResponse:
+    path = _resolved_tts_file(filename)
+    return FileResponse(path, media_type="audio/wav", filename=filename)
 
 
 @router.get("/memory/search")

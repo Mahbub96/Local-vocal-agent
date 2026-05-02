@@ -25,6 +25,17 @@ export type ChatResponse = {
   audio_path?: string | null;
 };
 
+/** `POST /voice-chat` JSON — play TTS via `GET {apiBase}/{audio_url}`. */
+export type VoiceChatResponse = {
+  session_id: string;
+  transcript: string;
+  response: string;
+  used_memory: boolean;
+  used_internet: boolean;
+  audio_path?: string | null;
+  audio_url?: string | null;
+};
+
 export type Metrics = {
   cpu_percent: number;
   memory_percent: number;

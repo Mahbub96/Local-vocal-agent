@@ -18,6 +18,7 @@ class OllamaChatModel:
             temperature=settings.ollama_temperature,
             request_timeout=settings.ollama_request_timeout,
             num_ctx=settings.ollama_num_ctx,
+            num_predict=settings.ollama_num_predict,
         )
 
     @property

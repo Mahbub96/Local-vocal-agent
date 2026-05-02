@@ -4,7 +4,9 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+import json
+
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,11 +37,12 @@ class Settings(BaseSettings):
     chat_max_input_chars: int = 4000
     # When the semantic memory retriever returns no long-term hits, run DuckDuckGo for the user message.
     assistant_search_if_no_memory: bool = True
-    cors_allowed_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://127.0.0.1:5173",
-            "http://localhost:5173",
-        ]
+    # CSV or JSON array in .env (CORS_ALLOWED_ORIGINS). Stored as str so pydantic-settings
+    # does not JSON-decode list fields before validators (which breaks CSV / empty values).
+    cors_allowed_origins_raw: str = Field(
+        default="http://127.0.0.1:5173,http://localhost:5173",
+        validation_alias="CORS_ALLOWED_ORIGINS",
+        exclude=True,
     )
 
     ollama_base_url: str = "http://127.0.0.1:11434"
@@ -49,6 +52,8 @@ class Settings(BaseSettings):
     ollama_retry_base_delay: float = 0.5
     ollama_temperature: float = 0.2
     ollama_num_ctx: int = 4096
+    # Cap generated tokens for snappier local replies; set -1 in .env for no cap (slower).
+    ollama_num_predict: int = 512
 
     app_storage_path: Path | None = None
     sqlite_path: Path = BASE_DIR / "storage" / "sqlite" / "assistant.db"
@@ -62,12 +67,24 @@ class Settings(BaseSettings):
 
     whisper_model_size: str = "base"
     stt_device: str = "cpu"
-    stt_beam_size: int = 5
+    # 1 = greedy decoding (fast); raise to 3–5 for slightly better quality at higher latency.
+    stt_beam_size: int = 1
+    # faster-whisper: int8 is fastest on CPU; use float16 with STT_DEVICE=cuda when on GPU.
+    stt_compute_type: str = "int8"
     stt_temperature: float = 0.0
     stt_vad_filter: bool = True
     stt_vad_min_silence_ms: int = 500
     tts_model_name: str = "tts_models/en/ljspeech/tacotron2-DDC"
+    # When user profile language is Bangla; lazy-loaded on first Bangla TTS. Large download on first use.
+    tts_model_name_bn: str = "tts_models/bn/custom/vits-male"
     tts_output_dir: Path = BASE_DIR / "storage" / "audio"
+    # TTS safety: cap input size, wall-clock bound, reject tiny outputs; delete files older than this.
+    tts_max_chars: int = 6000
+    tts_timeout_seconds: float = 180.0
+    tts_min_output_bytes: int = 256
+    tts_retention_hours: int = 168
+    # STT wall-clock bound (Whisper can hang on corrupt audio).
+    stt_transcribe_timeout_seconds: float = 120.0
 
     duckduckgo_region: str = "wt-wt"
     duckduckgo_safesearch: str = "moderate"
@@ -125,17 +142,24 @@ class Settings(BaseSettings):
         for path in required_paths:
             path.mkdir(parents=True, exist_ok=True)
 
-    @field_validator("cors_allowed_origins", mode="before")
-    @classmethod
-    def normalize_cors_origins(cls, value: object) -> list[str]:
-        """Allow both CSV string and list input for CORS origins."""
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        if isinstance(value, list):
-            return [str(origin).strip() for origin in value if str(origin).strip()]
-        raise ValueError("CORS_ALLOWED_ORIGINS must be a comma-separated string or list")
+    @computed_field
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """Origins for CORSMiddleware: CSV, JSON array string, or empty (defaults to local Vite)."""
+        raw = (self.cors_allowed_origins_raw or "").strip()
+        defaults = ["http://127.0.0.1:5173", "http://localhost:5173"]
+        if not raw:
+            return defaults
+        if raw.startswith("["):
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                return defaults
+            if isinstance(data, list):
+                out = [str(x).strip() for x in data if str(x).strip()]
+                return out if out else defaults
+            return defaults
+        return [p.strip() for p in raw.split(",") if p.strip()] or defaults
 
     @field_validator("search_provider", mode="before")
     @classmethod

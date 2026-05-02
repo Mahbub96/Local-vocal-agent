@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from datetime import datetime
 from urllib.parse import quote
 
@@ -27,6 +28,24 @@ logger = logging.getLogger(__name__)
 
 class ModelUnavailableError(RuntimeError):
     """Raised when configured Ollama model is missing/unavailable."""
+
+
+def _llm_chunk_to_text(chunk: object) -> str:
+    """Extract incremental text from LangChain / Ollama stream chunks."""
+    content = getattr(chunk, "content", chunk)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and str(block.get("type")) == "text":
+                parts.append(str(block.get("text", "")))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    if content is None:
+        return ""
+    return str(content)
 
 
 def _is_model_not_found_error(exc: Exception) -> bool:
@@ -537,6 +556,277 @@ class AssistantAgent:
                 response_text = _strip_llm_time_placeholders(response_text, time_line)
             tool_trace = json.dumps([], default=str)
         return {
+            "response": response_text,
+            "used_internet": use_search,
+            "used_memory": True,
+            "tool_result": tool_trace,
+        }
+
+    async def stream_run(
+        self,
+        *,
+        query: str,
+        memory_context: MemoryContext,
+    ) -> AsyncIterator[str | dict[str, object]]:
+        """Yield text deltas, then a final dict (same shape as `run`)."""
+        zone = resolve_timezone_for_query(query)
+        if zone is None and (_is_time_query(query) or _is_date_query(query)):
+            zone = _resolve_timezone_from_profile(memory_context.user_profile)
+        time_line: str | None = None
+        weather_snapshot: dict[str, str] | None = None
+        if zone:
+            time_line = await fetch_local_time_utc_string(zone)
+        if _is_weather_query(query):
+            weather_snapshot = await _fetch_weather_snapshot(query)
+
+        use_search = should_use_internet_search(query, memory_context, zone=zone)
+
+        profile_text = _user_profile_block(memory_context.user_profile)
+        long_term_context = "\n".join(
+            f"[{msg.role}] {msg.content}" for msg in memory_context.long_term_messages
+        ) or "No semantically relevant memory retrieved."
+        short_term_context = "\n".join(
+            f"[{msg['role']}] {msg['content']}" for msg in memory_context.short_term_messages
+        ) or "No recent conversation context."
+        web_context = "No internet search was used."
+        tool_trace_payload: list[dict[str, object]] = []
+
+        web_results: list[dict[str, str]] = []
+        if use_search:
+            search_q = refine_search_query_for_tool(query)
+            try:
+                web_results = await self.search_client.search(search_q)
+            except Exception as exc:
+                logger.exception("Internet search failed; continuing without web context: %s", exc)
+                web_results = []
+
+            context_blocks = _internet_context_blocks(time_line, web_results)
+            if weather_snapshot:
+                context_blocks.insert(
+                    0,
+                    "LIVE WEATHER (use this as primary weather source): "
+                    + weather_snapshot["summary"],
+                )
+            if context_blocks:
+                web_context = "\n\n".join(context_blocks)
+            tool_trace_payload.append(
+                {
+                    "tool": "internet_search_tool",
+                    "used": True,
+                    "results": len(web_results),
+                    "time_zone": zone,
+                    "used_live_clock": time_line is not None,
+                }
+            )
+            if weather_snapshot:
+                tool_trace_payload.append(
+                    {
+                        "tool": "weather_live_tool",
+                        "used": True,
+                        "provider": "wttr.in",
+                        "location": weather_snapshot["location"],
+                    }
+                )
+        elif weather_snapshot:
+            web_context = (
+                "LIVE WEATHER (use this as primary weather source): "
+                + weather_snapshot["summary"]
+            )
+            tool_trace_payload.append(
+                {
+                    "tool": "weather_live_tool",
+                    "used": True,
+                    "provider": "wttr.in",
+                    "location": weather_snapshot["location"],
+                }
+            )
+
+        if weather_snapshot and _is_weather_query(query):
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+            res = {
+                "response": weather_snapshot["summary"],
+                "used_internet": True,
+                "used_memory": True,
+                "tool_result": tool_trace,
+            }
+            yield res["response"]
+            yield res
+            return
+        if _is_weather_query(query):
+            selected = _select_weather_web_result(web_results)
+            if selected:
+                title = str(selected.get("title", "")).strip()
+                body = str(selected.get("body", "")).strip()
+                href = str(selected.get("href", "")).strip()
+                line = " ".join(part for part in (title, body) if part).strip()
+                if not line:
+                    line = "Latest weather details are available from the linked source."
+                if href:
+                    line = f"{line} Source: {href}"
+                tool_trace = json.dumps(tool_trace_payload, default=str)
+                res = {
+                    "response": line,
+                    "used_internet": True,
+                    "used_memory": True,
+                    "tool_result": tool_trace,
+                }
+                yield res["response"]
+                yield res
+                return
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+            res = {
+                "response": (
+                    "I could not fetch live weather data right now from online sources. "
+                    "Please retry in a moment."
+                ),
+                "used_internet": True,
+                "used_memory": True,
+                "tool_result": tool_trace,
+            }
+            yield res["response"]
+            yield res
+            return
+
+        if _is_time_query(query):
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+            compact = _compact_time_response(time_line)
+            if compact:
+                res = {
+                    "response": compact,
+                    "used_internet": True,
+                    "used_memory": True,
+                    "tool_result": tool_trace,
+                }
+                yield res["response"]
+                yield res
+                return
+            res = {
+                "response": (
+                    "I could not fetch live time right now from online time providers. "
+                    "Please retry in a moment."
+                ),
+                "used_internet": True,
+                "used_memory": True,
+                "tool_result": tool_trace,
+            }
+            yield res["response"]
+            yield res
+            return
+
+        if _is_date_query(query):
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+            compact_date = _compact_date_response(time_line)
+            if compact_date:
+                res = {
+                    "response": compact_date,
+                    "used_internet": True,
+                    "used_memory": True,
+                    "tool_result": tool_trace,
+                }
+                yield res["response"]
+                yield res
+                return
+            res = {
+                "response": (
+                    "I could not fetch today's date from live time providers right now. "
+                    "Please retry in a moment."
+                ),
+                "used_internet": True,
+                "used_memory": True,
+                "tool_result": tool_trace,
+            }
+            yield res["response"]
+            yield res
+            return
+
+        if _is_internet_access_query(query):
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+            if web_results:
+                res = {
+                    "response": (
+                        "Yes — internet access is currently available. "
+                        f"I can fetch live web results (received {len(web_results)} result snippets just now)."
+                    ),
+                    "used_internet": True,
+                    "used_memory": True,
+                    "tool_result": tool_trace,
+                }
+                yield res["response"]
+                yield res
+                return
+            res = {
+                "response": (
+                    "I could not confirm internet access right now because live web lookup failed. "
+                    "Please check network status and try again."
+                ),
+                "used_internet": True,
+                "used_memory": True,
+                "tool_result": tool_trace,
+            }
+            yield res["response"]
+            yield res
+            return
+
+        prompt = (
+            "You are a personal local assistant with long-term memory, short-term context, and optional web search.\n"
+            "Answer from long-term and recent conversation when they are enough.\n"
+            "Never claim you have no real-time internet or browsing access when internet/tool context is present.\n"
+            "When a LIVE TIME line is present, copy the exact YYYY-MM-DD HH:MM:SS from it into your answer.\n"
+            "FORBIDDEN: the phrase 'insert' near 'time' and 'here', bracket templates, TBD, or [placeholder] for time.\n"
+            "When web snippets or LIVE TIME are provided, use them for facts; do not invent times.\n"
+            "If web has no snippets and memory is thin, you may use general knowledge and say you could not verify online.\n\n"
+            f"{profile_text}"
+            f"Recent conversation:\n{short_term_context}\n\n"
+            f"Retrieved long-term memory (semantic search):\n{long_term_context}\n\n"
+            f"Internet / live data (may be empty):\n{web_context}\n\n"
+            f"User query:\n{query}"
+        )
+        acc_list: list[str] = []
+        tool_trace = json.dumps(tool_trace_payload, default=str)
+        try:
+            async for chunk in self.llm.astream(prompt):
+                d = _llm_chunk_to_text(chunk)
+                if d:
+                    acc_list.append(d)
+                    yield d
+            response_text = "".join(acc_list).strip()
+            if not response_text:
+                raise ValueError("Model produced an empty output.")
+            response_text = _strip_llm_time_placeholders(response_text, time_line)
+            tool_trace = json.dumps(tool_trace_payload, default=str)
+        except Exception as exc:
+            if _is_model_not_found_error(exc):
+                raise ModelUnavailableError(
+                    f"Ollama model '{settings.ollama_model}' is not available locally. "
+                    f"Pull it first (e.g. `ollama pull {settings.ollama_model}`) or set OLLAMA_MODEL."
+                ) from exc
+            logger.exception("LLM execution failed; applying minimal fallback prompt: %s", exc)
+            acc_fb: list[str] = []
+            try:
+                async for chunk in self.llm.astream(query):
+                    d = _llm_chunk_to_text(chunk)
+                    if d:
+                        acc_fb.append(d)
+                        yield d
+                response_text = "".join(acc_fb).strip()
+            except Exception as fallback_exc:
+                if _is_model_not_found_error(fallback_exc):
+                    raise ModelUnavailableError(
+                        f"Ollama model '{settings.ollama_model}' is not available locally. "
+                        f"Pull it first (e.g. `ollama pull {settings.ollama_model}`) or set OLLAMA_MODEL."
+                    ) from fallback_exc
+                logger.exception("Fallback LLM invocation failed: %s", fallback_exc)
+                response_text = ""
+            if not response_text:
+                response_text = (
+                    "I encountered a temporary issue while processing your request. "
+                    "Please try again."
+                )
+                yield response_text
+            else:
+                response_text = _strip_llm_time_placeholders(response_text, time_line)
+            tool_trace = json.dumps([], default=str)
+        yield {
             "response": response_text,
             "used_internet": use_search,
             "used_memory": True,

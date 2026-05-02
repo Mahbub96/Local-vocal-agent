@@ -1,4 +1,123 @@
-@import "./styles/tokens.css";
-@import "./styles/base.css";
-@import "./styles/layout.css";
-@import "./styles/components.css";
+@import "tailwindcss";
+@import "./theme/aurora.theme.css";
+
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    @apply m-0 h-dvh max-h-dvh overflow-hidden bg-aurora-canvas font-sans text-aurora-fg;
+    font-family: var(--font-sans);
+  }
+  #root {
+    @apply h-dvh max-h-dvh min-h-0 overflow-hidden;
+  }
+}
+
+/**
+ * Aurora UI primitives — compose these instead of one-off color stacks.
+ * Naming: aurora-* matches @theme tokens in theme/aurora.theme.css
+ */
+@layer utilities {
+  .text-balance-safe {
+    text-wrap: balance;
+  }
+
+  /* Surfaces */
+  .aurora-glass {
+    @apply rounded-aurora-2xl border border-aurora-border bg-aurora-surface shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_48px_-16px_rgba(0,210,255,0.12),0_0_60px_-24px_rgba(157,80,187,0.18)] backdrop-blur-xl;
+  }
+
+  .aurora-glass-inset {
+    @apply rounded-aurora-xl border border-aurora-border bg-black/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)];
+  }
+
+  .aurora-topbar {
+    @apply border-b border-aurora-border bg-aurora-canvas/90 backdrop-blur-xl;
+  }
+
+  .aurora-rail {
+    @apply border-aurora-border bg-aurora-rail/95 backdrop-blur-xl;
+  }
+
+  /** Fixed nav drawer shell (mobile) */
+  .aurora-drawer {
+    @apply border-r border-aurora-border bg-aurora-rail/95 shadow-2xl backdrop-blur-xl;
+  }
+
+  .aurora-status-bar {
+    @apply border-t border-aurora-border bg-black/35 text-aurora-fg-muted backdrop-blur-md;
+  }
+
+  /* Typography (semantic) */
+  .aurora-text-primary {
+    @apply text-aurora-fg;
+  }
+  .aurora-text-secondary {
+    @apply text-aurora-fg-secondary/90;
+  }
+  .aurora-text-muted {
+    @apply text-aurora-fg-muted;
+  }
+  .aurora-text-subtle {
+    @apply text-aurora-fg-subtle;
+  }
+
+  /* Glow accents */
+  .aurora-glow-purple {
+    box-shadow: 0 0 24px rgba(168, 85, 247, 0.45), 0 0 60px rgba(59, 130, 246, 0.2);
+  }
+  .aurora-glow-cyan {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.4);
+  }
+
+  /* Icon buttons (toolbar / chrome) */
+  .aurora-icon-btn {
+    @apply grid size-10 shrink-0 place-items-center rounded-aurora-md border border-aurora-border bg-aurora-surface text-aurora-fg/90 transition duration-200;
+  }
+  .aurora-icon-btn:hover {
+    @apply bg-aurora-surface-hover;
+  }
+  .aurora-icon-btn-sm {
+    @apply grid size-9 shrink-0 place-items-center rounded-aurora-md border border-aurora-border bg-aurora-surface text-aurora-fg/80 transition duration-200;
+  }
+  .aurora-icon-btn-sm:hover {
+    @apply bg-aurora-surface-pressed;
+  }
+
+  /* Navigation rail */
+  .aurora-nav-item {
+    @apply relative rounded-aurora-xl border-l-[3px] border-transparent pl-2.5 pr-3 py-2.5 text-left text-sm text-aurora-fg-muted transition-all duration-200;
+  }
+  .aurora-nav-item:hover {
+    @apply bg-aurora-surface-hover text-aurora-fg shadow-[0_0_20px_rgba(0,210,255,0.1)];
+  }
+  .aurora-nav-item-active {
+    @apply border-aurora-purple bg-aurora-nav-active-bg text-aurora-fg shadow-[0_0_28px_rgba(157,80,187,0.28)] ring-1 ring-aurora-nav-active-ring;
+  }
+
+  /* Voice transport */
+  .aurora-voice-ic-btn {
+    @apply grid size-12 place-items-center rounded-aurora-2xl border border-white/15 bg-white/6 text-aurora-fg/90 shadow-[0_0_20px_rgba(59,130,246,0.15)] transition duration-200;
+  }
+  .aurora-voice-ic-btn:hover {
+    @apply border-cyan-400/40 bg-aurora-surface-pressed shadow-[0_0_28px_rgba(34,211,238,0.25)];
+  }
+  .aurora-voice-ic-btn--gear:hover {
+    @apply border-purple-400/35 bg-aurora-surface-pressed shadow-none;
+  }
+  .aurora-voice-stop {
+    @apply grid size-14 place-items-center rounded-full bg-linear-to-br from-[#9d50bb] to-indigo-600 text-white shadow-[0_0_40px_rgba(157,80,187,0.6)] ring-2 ring-[#9d50bb]/45 transition duration-200;
+  }
+  .aurora-voice-stop:hover {
+    @apply scale-[1.02] shadow-[0_0_48px_rgba(157,80,187,0.72)];
+  }
+
+  /* Form fields (memory / profile) */
+  .aurora-field {
+    @apply w-full rounded-aurora-xl border border-aurora-border bg-black/30 px-3 py-2 text-aurora-fg outline-none ring-aurora-cyan/30 focus:ring-2;
+  }
+  .aurora-field-label {
+    @apply text-[11px] text-aurora-fg-muted;
+  }
+}

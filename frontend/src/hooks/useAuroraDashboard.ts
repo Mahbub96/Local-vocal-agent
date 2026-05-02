@@ -1,9 +1,16 @@
 /* Data loads in effects intentionally sync server state into React; see React docs on data fetching. */
 /* eslint-disable react-hooks/set-state-in-effect */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { apiBase, apiGet, apiPost, apiPut, USER_ID } from "../services/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  apiBase,
+  apiGet,
+  apiPost,
+  apiPostChatStream,
+  apiPostFormData,
+  apiPut,
+  USER_ID,
+} from "../services/api";
 import type {
-  ChatResponse,
   FileListResponse,
   Message,
   MessageFeedbackValue,
@@ -17,6 +24,7 @@ import type {
   ToolActivity,
   ToolActivityListResponse,
   UsageSummary,
+  VoiceChatResponse,
   VoiceStatus,
 } from "../types/ui";
 
@@ -42,6 +50,27 @@ export function useAuroraDashboard() {
   const [fileEntriesCount, setFileEntriesCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [streamingAssistantText, setStreamingAssistantText] = useState("");
+  const [ttsRevealText, setTtsRevealText] = useState("");
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsFullRef = useRef("");
+
+  /** Drop decode buffers and network hold on TTS `Audio` (prevents leaks on repeated playback / unmount). */
+  const releaseVoiceAudio = useCallback(() => {
+    const a = voiceAudioRef.current;
+    if (!a) return;
+    a.pause();
+    a.src = "";
+    a.removeAttribute("src");
+    void a.load();
+    voiceAudioRef.current = null;
+    setTtsRevealText("");
+    ttsFullRef.current = "";
+  }, []);
+
+  useEffect(() => {
+    return () => releaseVoiceAudio();
+  }, [releaseVoiceAudio]);
 
   const loadSessions = useCallback(async () => {
     const data = await apiGet<{ sessions: Session[] }>(`/sessions?user_id=${USER_ID}&limit=20`);
@@ -182,25 +211,130 @@ export function useAuroraDashboard() {
     if (!input.trim()) return;
     setLoading(true);
     setError("");
+    setStreamingAssistantText("");
+    setTtsRevealText("");
     try {
-      const result = await apiPost<ChatResponse>("/chat", {
-        message: input.trim(),
-        user_id: USER_ID,
-        session_id: activeSessionId || undefined,
-      });
-      setInput("");
-      await loadSessions();
-      setActiveSessionId(result.session_id);
-      await loadMessages(result.session_id);
-      await loadThinking(result.session_id);
-      await loadToolActivity(result.session_id);
-      await loadUsageSummary();
+      await apiPostChatStream(
+        {
+          message: input.trim(),
+          user_id: USER_ID,
+          session_id: activeSessionId || undefined,
+        },
+        {
+          onToken: (t) => setStreamingAssistantText((prev) => prev + t),
+          onDone: async (result) => {
+            setInput("");
+            setStreamingAssistantText("");
+            const sid = result.session_id;
+            await loadSessions();
+            setActiveSessionId(sid);
+            await Promise.all([
+              loadMessages(sid),
+              loadThinking(sid),
+              loadToolActivity(sid),
+              loadUsageSummary(),
+            ]);
+          },
+          onError: (msg) => {
+            setError(msg);
+            setStreamingAssistantText("");
+          },
+        },
+      );
     } catch (err) {
       setError(String(err));
+      setStreamingAssistantText("");
     } finally {
       setLoading(false);
     }
   }, [input, activeSessionId, loadSessions, loadMessages, loadThinking, loadToolActivity, loadUsageSummary]);
+
+  const stopVoicePlayback = releaseVoiceAudio;
+
+  const sendVoiceBlob = useCallback(
+    async (blob: Blob) => {
+      if (!blob.size) return;
+      setLoading(true);
+      setError("");
+      try {
+        const fd = new FormData();
+        const ext = blob.type.includes("webm") ? "webm" : "wav";
+        fd.append("file", blob, `speech.${ext}`);
+        fd.append("user_id", USER_ID);
+        if (activeSessionId) fd.append("session_id", activeSessionId);
+
+        const res = await apiPostFormData<VoiceChatResponse>("/voice-chat", fd, { timeoutMs: 600_000 });
+
+        stopVoicePlayback();
+        setStreamingAssistantText("");
+        ttsFullRef.current = res.response;
+        setTtsRevealText("");
+
+        if (res.audio_url) {
+          const base = apiBase.replace(/\/$/, "");
+          const path = res.audio_url.replace(/^\//, "");
+          const url = `${base}/${path}`;
+          const audio = new Audio(url);
+          audio.preload = "auto";
+          voiceAudioRef.current = audio;
+
+          const syncCaption = () => {
+            const full = ttsFullRef.current;
+            const a = voiceAudioRef.current;
+            if (!full || !a) return;
+            const dur = a.duration;
+            if (!Number.isFinite(dur) || dur <= 0) {
+              setTtsRevealText(full);
+              return;
+            }
+            const n = Math.min(
+              full.length,
+              Math.max(0, Math.ceil((a.currentTime / dur) * full.length)),
+            );
+            setTtsRevealText(full.slice(0, n));
+          };
+
+          audio.addEventListener("timeupdate", syncCaption);
+          audio.addEventListener("loadeddata", syncCaption);
+          audio.addEventListener("ended", () => {
+            setTtsRevealText(ttsFullRef.current);
+            audio.removeEventListener("timeupdate", syncCaption);
+            audio.removeEventListener("loadeddata", syncCaption);
+          });
+          void audio.play().catch((err) => {
+            console.warn("TTS playback failed (response still saved):", err);
+            setTtsRevealText(ttsFullRef.current);
+          });
+        } else {
+          setTtsRevealText(res.response);
+        }
+
+        const sid = res.session_id;
+        await loadSessions();
+        setActiveSessionId(sid);
+        await Promise.all([
+          loadMessages(sid),
+          loadThinking(sid),
+          loadToolActivity(sid),
+          loadUsageSummary(),
+        ]);
+        setTtsRevealText("");
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      activeSessionId,
+      loadSessions,
+      loadMessages,
+      loadThinking,
+      loadToolActivity,
+      loadUsageSummary,
+      stopVoicePlayback,
+    ],
+  );
 
   const submitFeedback = useCallback(async (messageId: string, value: MessageFeedbackValue) => {
     try {
@@ -268,9 +402,13 @@ export function useAuroraDashboard() {
     activeSessionTitle,
     dayLabel,
     lastAssistantText,
+    streamingAssistantText,
+    ttsRevealText,
     userInitial,
     submitFeedback,
     saveProfile,
     allSystemsOk,
+    sendVoiceBlob,
+    stopVoicePlayback,
   };
 }
