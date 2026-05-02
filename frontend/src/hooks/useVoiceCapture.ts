@@ -121,7 +121,12 @@ const SOFT_SPEECH_MS = 160;
 const BARGE_RMS_MIN = 0.045;
 /** Loud energy must stay above threshold this long (ms) to count as intentional interrupt. */
 const BARGE_HOLD_MS = 280;
-const MAX_SEGMENT_MS = 45_000;
+/**
+ * Max length of one hands-free recording. Keep this moderate: uploads scale with duration and
+ * server STT time grows roughly with audio length — very long clips make `/voice-chat/stream`
+ * stay open until transcription + LLM + TTS all finish (slow in DevTools).
+ */
+const MAX_SEGMENT_MS = 28_000;
 /**
  * Hands-free: if VAD never sees speech, stop the segment after this long instead of waiting
  * for MAX_SEGMENT_MS. Long “silent” recordings still encode a large blob and can pass the

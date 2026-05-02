@@ -32,7 +32,13 @@ const SYSTEM_POLL_MS = 10000;
 const USAGE_POLL_MS = 30000;
 const SSE_THINKING_MS = 2000;
 const SSE_VOICE_MS = 2000;
-const SSE_MAX_EVENTS = 60;
+/** Voice status SSE: long-lived while dashboard is open. */
+const SSE_VOICE_MAX_EVENTS = 60;
+/** Thinking panel SSE: shorter run avoids 2min open connections (60×2s); thinking also refreshes on chat. */
+const SSE_THINKING_MAX_EVENTS = 20;
+
+/** Recent messages for chat UI + aligns with server short-term context default (6). */
+const RECENT_MESSAGES_LIMIT = 6;
 
 export function useAuroraDashboard() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -54,6 +60,8 @@ export function useAuroraDashboard() {
   const [streamingAssistantText, setStreamingAssistantText] = useState("");
   const [ttsRevealText, setTtsRevealText] = useState("");
   const [voiceGateHint, setVoiceGateHint] = useState("");
+  /** Server STT result (SSE `transcript`) shown until reply completes — confirms early progress. */
+  const [voiceSttPreview, setVoiceSttPreview] = useState("");
   /** True from TTS playback start-attempt until ended/stop — blocks overlapping hands-free turns. */
   const [ttsAudioPlaying, setTtsAudioPlaying] = useState(false);
   const voiceGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -155,7 +163,9 @@ export function useAuroraDashboard() {
 
   const loadMessages = useCallback(async (sessionId: string) => {
     latestMessagesSessionRef.current = sessionId;
-    const data = await apiGet<{ messages: Message[] }>(`/sessions/${sessionId}/messages?limit=30`);
+    const data = await apiGet<{ messages: Message[] }>(
+      `/sessions/${sessionId}/messages?limit=${RECENT_MESSAGES_LIMIT}`,
+    );
     if (latestMessagesSessionRef.current !== sessionId) return;
     setMessages(data.messages);
   }, []);
@@ -259,7 +269,7 @@ export function useAuroraDashboard() {
 
   useEffect(() => {
     const source = new EventSource(
-      `${apiBase}/voice/status-stream?interval_ms=${SSE_VOICE_MS}&max_events=${SSE_MAX_EVENTS}`,
+      `${apiBase}/voice/status-stream?interval_ms=${SSE_VOICE_MS}&max_events=${SSE_VOICE_MAX_EVENTS}`,
     );
     source.addEventListener("voice_status", (event) => {
       try {
@@ -275,7 +285,7 @@ export function useAuroraDashboard() {
   useEffect(() => {
     if (!activeSessionId) return;
     const source = new EventSource(
-      `${apiBase}/sessions/${activeSessionId}/thinking-stream?interval_ms=${SSE_THINKING_MS}&max_events=${SSE_MAX_EVENTS}`,
+      `${apiBase}/sessions/${activeSessionId}/thinking-stream?interval_ms=${SSE_THINKING_MS}&max_events=${SSE_THINKING_MAX_EVENTS}`,
     );
     source.addEventListener("thinking_update", (event) => {
       try {
@@ -376,8 +386,13 @@ export function useAuroraDashboard() {
         if (hint.length >= 3) fd.append("transcript_hint", hint);
         stopVoicePlayback();
         setStreamingAssistantText("");
+        setVoiceSttPreview("");
         let usedStreamingTts = false;
         await apiPostVoiceStream(fd, {
+          onTranscript: (t) => {
+            if (!isLatestTurnRequest(requestId)) return;
+            setVoiceSttPreview(t);
+          },
           onToken: (t) => {
             if (!isLatestTurnRequest(requestId)) return;
             setStreamingAssistantText((prev) => prev + t);
@@ -391,6 +406,7 @@ export function useAuroraDashboard() {
             if (!isLatestTurnRequest(requestId)) return;
             if (res.skipped) {
               setError("");
+              setVoiceSttPreview("");
               if (res.skip_reason === "no_speech") {
                 if (voiceGateTimerRef.current) clearTimeout(voiceGateTimerRef.current);
                 setVoiceGateHint("No speech detected. Speak a bit longer or check the mic.");
@@ -413,6 +429,7 @@ export function useAuroraDashboard() {
               return;
             }
             setVoiceGateHint("");
+            setVoiceSttPreview("");
             // Keep streamed text visible until messages are refreshed.
             setStreamingAssistantText((prev) => prev || res.response || "");
             ttsFullRef.current = res.response;
@@ -478,13 +495,16 @@ export function useAuroraDashboard() {
           },
           onError: (msg) => {
             if (!isLatestTurnRequest(requestId)) return;
+            stopVoicePlayback();
             setError(msg);
             setStreamingAssistantText("");
+            setVoiceSttPreview("");
           },
         });
       } catch (err) {
         if (!isLatestTurnRequest(requestId)) return;
         setError(String(err));
+        setVoiceSttPreview("");
       } finally {
         if (isLatestTurnRequest(requestId)) {
           setLoading(false);
@@ -577,6 +597,7 @@ export function useAuroraDashboard() {
     stopVoicePlayback,
     loadProfile,
     voiceGateHint,
+    voiceSttPreview,
     voiceUploadBusy,
     ttsAudioPlaying,
   };

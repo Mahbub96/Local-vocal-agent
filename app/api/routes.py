@@ -96,7 +96,7 @@ async def _compose_thinking_process(
     if session is None:
         raise HTTPException(status_code=404, detail=SESSION_NOT_FOUND_DETAIL)
 
-    messages = await memory_service.fetch_session_messages(session_id, limit=20)
+    messages = await memory_service.fetch_session_messages(session_id, limit=6)
     latest_user = next((msg for msg in reversed(messages) if msg.role == "user"), None)
     latest_assistant = next((msg for msg in reversed(messages) if msg.role == "assistant"), None)
     if latest_user is None:

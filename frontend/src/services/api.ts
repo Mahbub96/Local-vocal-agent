@@ -78,6 +78,8 @@ export type ChatStreamCallbacks = {
 };
 
 export type VoiceStreamCallbacks = {
+  /** Fired as soon as server STT finishes (before LLM) — improves perceived latency / Network TTFB. */
+  onTranscript?: (text: string) => void;
   onToken: (chunk: string) => void;
   /** Incremental TTS WAV path under API base (streaming voice only). */
   onTtsChunk?: (audioUrl: string, snippet: string) => void;
@@ -110,40 +112,58 @@ export async function apiPostChatStream(
   if (!reader) throw new Error("No response body");
   const dec = new TextDecoder();
   let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      let ev = "";
-      const dataLines: string[] = [];
-      for (const line of block.split("\n")) {
-        if (line.startsWith("event:")) ev = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-      }
-      const data = dataLines.join("\n");
-      if (!ev || !data) continue;
-      if (ev === "token") {
-        try {
-          const j = JSON.parse(data) as { t?: string };
-          if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
-        } catch {
-          /* ignore malformed chunk */
+  let sawTerminal = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let ev = "";
+        const dataLines: string[] = [];
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) ev = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
         }
-      } else if (ev === "done") {
-        callbacks.onDone(JSON.parse(data) as ChatResponse);
-      } else if (ev === "error") {
-        try {
-          const j = JSON.parse(data) as { detail?: string };
-          callbacks.onError(j.detail ?? "Request failed");
-        } catch {
-          callbacks.onError(data || "Request failed");
+        const data = dataLines.join("\n");
+        if (!ev || !data) continue;
+        if (ev === "token") {
+          try {
+            const j = JSON.parse(data) as { t?: string };
+            if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
+          } catch {
+            /* ignore malformed chunk */
+          }
+        } else if (ev === "done") {
+          sawTerminal = true;
+          try {
+            callbacks.onDone(JSON.parse(data) as ChatResponse);
+          } catch {
+            callbacks.onError("Invalid chat response payload.");
+          }
+        } else if (ev === "error") {
+          sawTerminal = true;
+          try {
+            const j = JSON.parse(data) as { detail?: string };
+            callbacks.onError(j.detail ?? "Request failed");
+          } catch {
+            callbacks.onError(data || "Request failed");
+          }
         }
       }
     }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* already released */
+    }
+  }
+  if (!sawTerminal) {
+    callbacks.onError("Connection closed before the reply finished.");
   }
 }
 
@@ -171,7 +191,12 @@ export async function apiPostVoiceStream(
           `POST /voice-chat failed: ${fallback.status}${text ? ` — ${text.slice(0, 200)}` : ""}`,
         );
       }
-      callbacks.onDone((await fallback.json()) as VoiceChatResponse);
+      try {
+        const body = (await fallback.json()) as VoiceChatResponse;
+        callbacks.onDone(body);
+      } catch {
+        throw new Error("Voice response was not valid JSON.");
+      }
       return;
     }
     const text = await res.text();
@@ -183,47 +208,72 @@ export async function apiPostVoiceStream(
   if (!reader) throw new Error("No response body");
   const dec = new TextDecoder();
   let buf = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buf.indexOf("\n\n")) >= 0) {
-      const block = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      let ev = "";
-      const dataLines: string[] = [];
-      for (const line of block.split("\n")) {
-        if (line.startsWith("event:")) ev = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
-      }
-      const data = dataLines.join("\n");
-      if (!ev || !data) continue;
-      if (ev === "token") {
-        try {
-          const j = JSON.parse(data) as { t?: string };
-          if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
-        } catch {
-          /* ignore malformed chunk */
+  let sawTerminal = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) >= 0) {
+        const block = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        let ev = "";
+        const dataLines: string[] = [];
+        for (const line of block.split("\n")) {
+          if (line.startsWith("event:")) ev = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
         }
-      } else if (ev === "tts_chunk") {
-        try {
-          const j = JSON.parse(data) as { audio_url?: string; t?: string };
-          const au = j.audio_url?.trim();
-          if (au && callbacks.onTtsChunk) callbacks.onTtsChunk(au, j.t ?? "");
-        } catch {
-          /* ignore */
-        }
-      } else if (ev === "done") {
-        callbacks.onDone(JSON.parse(data) as VoiceChatResponse);
-      } else if (ev === "error") {
-        try {
-          const j = JSON.parse(data) as { detail?: string };
-          callbacks.onError(j.detail ?? "Request failed");
-        } catch {
-          callbacks.onError(data || "Request failed");
+        const data = dataLines.join("\n");
+        if (!ev || !data) continue;
+        if (ev === "transcript") {
+          try {
+            const j = JSON.parse(data) as { t?: string };
+            if (typeof j.t === "string" && callbacks.onTranscript) callbacks.onTranscript(j.t);
+          } catch {
+            /* ignore */
+          }
+        } else if (ev === "token") {
+          try {
+            const j = JSON.parse(data) as { t?: string };
+            if (j.t) emitSmallestTextChunks(j.t, callbacks.onToken);
+          } catch {
+            /* ignore malformed chunk */
+          }
+        } else if (ev === "tts_chunk") {
+          try {
+            const j = JSON.parse(data) as { audio_url?: string; t?: string };
+            const au = j.audio_url?.trim();
+            if (au && callbacks.onTtsChunk) callbacks.onTtsChunk(au, j.t ?? "");
+          } catch {
+            /* ignore */
+          }
+        } else if (ev === "done") {
+          sawTerminal = true;
+          try {
+            callbacks.onDone(JSON.parse(data) as VoiceChatResponse);
+          } catch {
+            callbacks.onError("Invalid voice response payload.");
+          }
+        } else if (ev === "error") {
+          sawTerminal = true;
+          try {
+            const j = JSON.parse(data) as { detail?: string };
+            callbacks.onError(j.detail ?? "Request failed");
+          } catch {
+            callbacks.onError(data || "Request failed");
+          }
         }
       }
     }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* already released */
+    }
+  }
+  if (!sawTerminal) {
+    callbacks.onError("Connection closed before the voice reply finished.");
   }
 }

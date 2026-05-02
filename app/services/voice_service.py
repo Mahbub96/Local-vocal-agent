@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import re
 from pathlib import Path
 from typing import AsyncIterator, Any
@@ -29,9 +30,25 @@ from app.services.voice_status_service import voice_status_service
 
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
+
+
+def _sse_error_payload(detail: str) -> str:
+    return f"event: error\ndata: {json.dumps({'detail': detail})}\n\n"
+
+
+def _http_exception_detail(exc: HTTPException) -> str:
+    d = exc.detail
+    if isinstance(d, str):
+        return d
+    if isinstance(d, dict):
+        return str(d.get("detail", d))
+    return str(d)
+
 
 # Streaming voice TTS: speak partial replies before the LLM finishes (sentence / soft-max splits).
-_TTS_STREAM_MIN_CHARS = 28
+# Slightly lower first-chunk threshold → earlier audible reply (more TTS segment calls).
+_TTS_STREAM_MIN_CHARS = 22
 _TTS_STREAM_MAX_CHARS = 220
 
 # One in-flight voice pipeline per user id so status + DB updates stay ordered (no overlapping replies).
@@ -228,8 +245,13 @@ class VoiceService:
                 timeout_seconds=float(settings.audio_ffmpeg_timeout_seconds),
             )
             transcript = await self.stt_service.transcribe(path_for_stt, language=stt_lang)
-            if _voice_prefers_bangla(prof) and (
-                _is_low_clarity_transcript(transcript) or _is_transcript_language_mismatch(transcript, prof)
+            if (
+                settings.stt_bn_recovery_pass
+                and _voice_prefers_bangla(prof)
+                and (
+                    _is_low_clarity_transcript(transcript)
+                    or _is_transcript_language_mismatch(transcript, prof)
+                )
             ):
                 # Recovery pass: when user prefers Bangla and auto-detect looks noisy,
                 # run a BN-forced pass and keep whichever looks more Bangla-coherent.
@@ -433,6 +455,7 @@ class VoiceService:
     ) -> AsyncIterator[str]:
         """
         SSE lines for voice flow:
+        - transcript: final user text right after STT (first bytes — lowers TTFB vs waiting for LLM)
         - token: streamed assistant text chunks
         - tts_chunk: partial WAV URL + snippet (`audio_url`, `t`)
         - done: VoiceChatResponse JSON
@@ -480,6 +503,13 @@ class VoiceService:
                     )
                     yield f"event: done\ndata: {json.dumps(payload.model_dump())}\n\n"
                     return
+
+                # First SSE payload: browser / DevTools get bytes as soon as STT finishes (not after LLM).
+                yield (
+                    "event: transcript\ndata: "
+                    + json.dumps({"t": transcript})
+                    + "\n\n"
+                )
 
                 if user_id and should_drop_voice_for_wake_gate(prof, transcript):
                     session = await self.chat_service.memory_service.get_or_create_session(
@@ -645,6 +675,18 @@ class VoiceService:
                     else None,
                 )
                 yield f"event: done\ndata: {json.dumps(payload.model_dump())}\n\n"
+            except HTTPException as exc:
+                yield _sse_error_payload(_http_exception_detail(exc))
+                return
+            except TimeoutError:
+                yield _sse_error_payload(
+                    "Speech recognition timed out. Try a shorter recording."
+                )
+                return
+            except Exception:
+                logger.exception("voice_chat_stream failed")
+                yield _sse_error_payload("Voice processing failed. Please try again.")
+                return
             finally:
                 await voice_status_service.set_state(
                     "idle",

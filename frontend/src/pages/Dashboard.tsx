@@ -73,6 +73,7 @@ export function Dashboard() {
     sendVoiceBlob,
     stopVoicePlayback,
     voiceGateHint,
+    voiceSttPreview,
     voiceUploadBusy,
     ttsAudioPlaying,
   } = useAuroraDashboard();
@@ -322,6 +323,7 @@ export function Dashboard() {
                         captureMode={captureMode}
                         onCaptureModeChange={setCaptureModeSafe}
                         gateHint={voiceGateHint}
+                        sttTranscriptPreview={voiceSttPreview}
                         isListening={isListeningUi}
                         voiceSessionHot={isHot}
                         liveUserText={liveUserText}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -49,6 +50,7 @@ from app.agents.task_policy import (
 )
 from app.integrations.search.duckduckgo import DuckDuckGoSearchClient, get_duckduckgo_search_client
 from app.integrations.market.price_stats import (
+    MarketSnapshot,
     fetch_market_snapshot_for_query,
     market_snapshot_to_markdown,
 )
@@ -248,6 +250,30 @@ async def _fetch_weather_snapshot(query: str) -> dict[str, str] | None:
     }
 
 
+async def _fetch_live_time_and_weather(
+    *,
+    query: str,
+    zone: str | None,
+) -> tuple[str | None, dict[str, str] | None]:
+    """Run time + weather I/O concurrently (independent HTTP) to cut pre-LLM latency."""
+    need_time = bool(zone)
+    need_weather = is_weather_query(query)
+    if not need_time and not need_weather:
+        return None, None
+
+    async def _time_part() -> str | None:
+        if not zone:
+            return None
+        return await fetch_local_time_utc_string(zone)
+
+    async def _weather_part() -> dict[str, str] | None:
+        if not need_weather:
+            return None
+        return await _fetch_weather_snapshot(query)
+
+    return await asyncio.gather(_time_part(), _weather_part())
+
+
 def _internet_context_blocks(
     time_line: str | None,
     web_results: list[dict[str, str]],
@@ -394,12 +420,9 @@ class AssistantAgent:
         strict_live = is_finance_or_stats_query(query)
         if zone is None and strict_live and re.search(r"(?i)\b(dhaka|bangladesh|dse)\b", query):
             zone = "Asia/Dhaka"
-        time_line: str | None = None
-        weather_snapshot: dict[str, str] | None = None
-        if zone:
-            time_line = await fetch_local_time_utc_string(zone)
-        if is_weather_query(query):
-            weather_snapshot = await _fetch_weather_snapshot(query)
+        time_line, weather_snapshot = await _fetch_live_time_and_weather(
+            query=query, zone=zone
+        )
 
         use_search = should_use_internet_search(query, memory_context, zone=zone)
 
@@ -420,14 +443,31 @@ class AssistantAgent:
         market_markdown: str | None = None
 
         web_results: list[dict[str, str]] = []
+        market_snapshot: MarketSnapshot | None = None
         if use_search:
             normalized_query = _rewrite_relative_weekday_in_query(query, time_line)
             search_q = refine_search_query_for_tool(normalized_query)
-            try:
-                web_results = await self.search_client.search(search_q)
-            except Exception as exc:
-                logger.exception("Internet search failed; continuing without web context: %s", exc)
-                web_results = []
+            if strict_live:
+
+                async def _safe_ddg() -> list[dict[str, str]]:
+                    try:
+                        return await self.search_client.search(search_q)
+                    except Exception as exc:
+                        logger.exception(
+                            "Internet search failed; continuing without web context: %s", exc
+                        )
+                        return []
+
+                web_results, market_snapshot = await asyncio.gather(
+                    _safe_ddg(),
+                    fetch_market_snapshot_for_query(query),
+                )
+            else:
+                try:
+                    web_results = await self.search_client.search(search_q)
+                except Exception as exc:
+                    logger.exception("Internet search failed; continuing without web context: %s", exc)
+                    web_results = []
 
             context_blocks = _internet_context_blocks(time_line, web_results)
             if weather_snapshot:
@@ -471,7 +511,8 @@ class AssistantAgent:
             )
 
         if strict_live:
-            market_snapshot = await fetch_market_snapshot_for_query(query)
+            if market_snapshot is None:
+                market_snapshot = await fetch_market_snapshot_for_query(query)
             if market_snapshot:
                 market_markdown = market_snapshot_to_markdown(market_snapshot)
                 tool_trace_payload.append(
@@ -760,12 +801,9 @@ class AssistantAgent:
         strict_live = is_finance_or_stats_query(query)
         if zone is None and strict_live and re.search(r"(?i)\b(dhaka|bangladesh|dse)\b", query):
             zone = "Asia/Dhaka"
-        time_line: str | None = None
-        weather_snapshot: dict[str, str] | None = None
-        if zone:
-            time_line = await fetch_local_time_utc_string(zone)
-        if is_weather_query(query):
-            weather_snapshot = await _fetch_weather_snapshot(query)
+        time_line, weather_snapshot = await _fetch_live_time_and_weather(
+            query=query, zone=zone
+        )
 
         use_search = should_use_internet_search(query, memory_context, zone=zone)
 
@@ -786,14 +824,31 @@ class AssistantAgent:
         market_markdown: str | None = None
 
         web_results: list[dict[str, str]] = []
+        market_snapshot: MarketSnapshot | None = None
         if use_search:
             normalized_query = _rewrite_relative_weekday_in_query(query, time_line)
             search_q = refine_search_query_for_tool(normalized_query)
-            try:
-                web_results = await self.search_client.search(search_q)
-            except Exception as exc:
-                logger.exception("Internet search failed; continuing without web context: %s", exc)
-                web_results = []
+            if strict_live:
+
+                async def _safe_ddg_stream() -> list[dict[str, str]]:
+                    try:
+                        return await self.search_client.search(search_q)
+                    except Exception as exc:
+                        logger.exception(
+                            "Internet search failed; continuing without web context: %s", exc
+                        )
+                        return []
+
+                web_results, market_snapshot = await asyncio.gather(
+                    _safe_ddg_stream(),
+                    fetch_market_snapshot_for_query(query),
+                )
+            else:
+                try:
+                    web_results = await self.search_client.search(search_q)
+                except Exception as exc:
+                    logger.exception("Internet search failed; continuing without web context: %s", exc)
+                    web_results = []
 
             context_blocks = _internet_context_blocks(time_line, web_results)
             if weather_snapshot:
@@ -837,7 +892,8 @@ class AssistantAgent:
             )
 
         if strict_live:
-            market_snapshot = await fetch_market_snapshot_for_query(query)
+            if market_snapshot is None:
+                market_snapshot = await fetch_market_snapshot_for_query(query)
             if market_snapshot:
                 market_markdown = market_snapshot_to_markdown(market_snapshot)
                 tool_trace_payload.append(

@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     embedding_model: str = "nomic-embed-text"
     # Semantic Chroma hits (fewer = faster retrieval + shorter prompts).
     memory_top_k: int = Field(default=12, ge=1, le=100)
-    short_term_message_limit: int = Field(default=14, ge=4, le=80)
+    short_term_message_limit: int = Field(default=6, ge=4, le=80)
     # Extra SQLite substring matches across *all* sessions for this user (exact phrase / keyword catch).
     memory_keyword_supplement: bool = True
     memory_keyword_match_limit: int = Field(default=10, ge=0, le=100)
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     memory_keyword_min_word_len: int = Field(default=4, ge=3, le=12)
     # Trim each retrieved memory line in the LLM prompt so huge chats do not blow the context window.
     memory_injected_chars_per_message: int = Field(default=1400, ge=200, le=16_000)
-    llm_max_context_messages: int = 12
+    llm_max_context_messages: int = 6
 
     whisper_model_size: str = "base"
     stt_device: str = "cpu"
@@ -85,6 +85,8 @@ class Settings(BaseSettings):
     stt_temperature: float = 0.0
     stt_vad_filter: bool = True
     stt_vad_min_silence_ms: int = 500
+    # Second Whisper pass (language=bn) when Bangla profile + noisy auto-detect — improves quality, adds latency.
+    stt_bn_recovery_pass: bool = Field(default=True)
     # VITS (end-to-end) tends to sound less “flat” than tacotron2+DDC for English.
     tts_model_name: str = "tts_models/en/ljspeech/vits"
     # >1.0 speeds up playback (ffmpeg atempo). Coqui’s API `speed` does not apply to local VITS/Tacotron.

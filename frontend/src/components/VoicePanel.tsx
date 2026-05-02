@@ -33,6 +33,8 @@ type VoicePanelProps = {
   micLevelLocal?: number;
   /** Short-lived hint when voice was skipped (e.g. silent mode without wake name). */
   gateHint?: string;
+  /** Server STT line (arrives before LLM) — confirms progress while “thinking”. */
+  sttTranscriptPreview?: string;
 };
 
 /** Voice card layout matches reference: header (listen | output title), waveform through orb, footer (lang | controls | output stack). */
@@ -52,6 +54,7 @@ export function VoicePanel({
   liveUserText = "",
   micLevelLocal,
   gateHint = "",
+  sttTranscriptPreview = "",
 }: VoicePanelProps) {
   const st = voiceStatus?.state;
   const s = st?.toLowerCase() ?? "idle";
@@ -108,6 +111,13 @@ export function VoicePanel({
   }, [handsFree, isListening, st, liveUserText]);
 
   const listenSub = useMemo(() => {
+    const heard = sttTranscriptPreview.trim();
+    if (
+      heard &&
+      (s === "transcribing" || s === "thinking")
+    ) {
+      return heard.length > 140 ? `Heard: ${heard.slice(0, 137)}…` : `Heard: ${heard}`;
+    }
     if (gateHint.trim()) return gateHint;
     /** Match heading: between VAD segments, don’t let stale Web Speech text imply you’re still “in” listening. */
     if (handsFree && !isListening) {
@@ -121,6 +131,8 @@ export function VoicePanel({
     return hint;
   }, [
     gateHint,
+    sttTranscriptPreview,
+    s,
     handsFree,
     isListening,
     liveUserText,
