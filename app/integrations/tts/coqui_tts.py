@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import shutil
 import threading
 from pathlib import Path
 from uuid import uuid4
 
 from TTS.api import TTS
+from TTS.utils.generic_utils import get_user_data_dir
 
 from app.core.settings import get_settings
 from app.integrations.tts.tts_text import prepare_tts_text
@@ -18,6 +20,18 @@ settings = get_settings()
 _tts_model_lock = threading.Lock()
 
 
+def _coqui_model_cache_dir(model_name: str) -> Path:
+    """Coqui stores under get_user_data_dir('tts') with `/` replaced by `--`."""
+    return Path(get_user_data_dir("tts")) / model_name.replace("/", "--")
+
+
+def _clear_coqui_model_cache(model_name: str) -> None:
+    path = _coqui_model_cache_dir(model_name)
+    if path.is_dir():
+        logger.warning("Removing incomplete Coqui TTS cache: %s", path)
+        shutil.rmtree(path, ignore_errors=True)
+
+
 class CoquiTTSService:
     """Async wrapper for local Coqui TTS synthesis (defensive: timeout, sanitize, lock)."""
 
@@ -27,7 +41,21 @@ class CoquiTTSService:
 
     def _get_model(self) -> TTS:
         if self._tts is None:
-            self._tts = TTS(model_name=self.model_name, progress_bar=False)
+            try:
+                self._tts = TTS(model_name=self.model_name, progress_bar=False)
+            except ValueError as exc:
+                # Common after interrupted download: folder exists but no model_file.pth/config.json.
+                msg = str(exc)
+                if "Model file not found" in msg or "Config file not found" in msg:
+                    logger.warning(
+                        "Coqui TTS cache incomplete for %s (%s). Clearing cache and re-downloading.",
+                        self.model_name,
+                        msg,
+                    )
+                    _clear_coqui_model_cache(self.model_name)
+                    self._tts = TTS(model_name=self.model_name, progress_bar=False)
+                else:
+                    raise
         return self._tts
 
     def build_output_path(self, *, file_stem: str | None = None) -> Path:
