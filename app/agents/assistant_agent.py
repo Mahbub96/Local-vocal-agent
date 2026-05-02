@@ -182,6 +182,66 @@ def _contains_arabic_script(text: str) -> bool:
     )
 
 
+def _contains_cjk_script(text: str) -> bool:
+    return any(
+        ("\u3040" <= ch <= "\u30ff")  # Hiragana + Katakana
+        or ("\u31f0" <= ch <= "\u31ff")  # Katakana phonetic extensions
+        or ("\u4e00" <= ch <= "\u9fff")  # CJK unified ideographs
+        or ("\u3400" <= ch <= "\u4dbf")  # CJK extension A
+        or ("\u1100" <= ch <= "\u11ff")  # Hangul Jamo
+        or ("\u3130" <= ch <= "\u318f")  # Hangul compatibility Jamo
+        or ("\ua960" <= ch <= "\ua97f")  # Hangul Jamo extended-A
+        or ("\uac00" <= ch <= "\ud7af")  # Hangul syllables
+        or ("\ud7b0" <= ch <= "\ud7ff")  # Hangul Jamo extended-B
+        for ch in text
+    )
+
+
+def _contains_devanagari_script(text: str) -> bool:
+    return any("\u0900" <= ch <= "\u097f" for ch in text)
+
+
+def _contains_forbidden_non_bangla_script(text: str) -> bool:
+    return (
+        _contains_arabic_script(text)
+        or _contains_cjk_script(text)
+        or _contains_devanagari_script(text)
+    )
+
+
+def _strip_forbidden_non_bangla_script(text: str) -> str:
+    out: list[str] = []
+    for ch in text:
+        if (
+            ("\u0600" <= ch <= "\u06ff")
+            or ("\u0750" <= ch <= "\u077f")
+            or ("\u08a0" <= ch <= "\u08ff")
+            or ("\ufb50" <= ch <= "\ufdff")
+            or ("\ufe70" <= ch <= "\ufeff")
+            or ("\u3040" <= ch <= "\u30ff")
+            or ("\u31f0" <= ch <= "\u31ff")
+            or ("\u4e00" <= ch <= "\u9fff")
+            or ("\u3400" <= ch <= "\u4dbf")
+            or ("\u1100" <= ch <= "\u11ff")
+            or ("\u3130" <= ch <= "\u318f")
+            or ("\ua960" <= ch <= "\ua97f")
+            or ("\uac00" <= ch <= "\ud7af")
+            or ("\ud7b0" <= ch <= "\ud7ff")
+            or ("\u0900" <= ch <= "\u097f")
+        ):
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def _enforce_bangla_output(response: str, profile: dict | None) -> str:
+    if not _prefers_bangla_profile(profile):
+        return response
+    if _contains_forbidden_non_bangla_script(response):
+        return "আমি দুঃখিত, আউটপুটে ভুল স্ক্রিপ্ট চলে এসেছে। অনুগ্রহ করে আবার বাংলায় বলুন বা লিখুন।"
+    return response
+
+
 def _is_low_clarity_input(query: str) -> bool:
     t = query.strip()
     if len(t) < 8:
@@ -572,7 +632,9 @@ class AssistantAgent:
                 "used_memory": True,
                 "tool_result": json.dumps([], default=str),
             }
-        if _prefers_bangla_profile(memory_context.user_profile) and _contains_arabic_script(query):
+        if _prefers_bangla_profile(memory_context.user_profile) and (
+            _contains_arabic_script(query) or _contains_cjk_script(query)
+        ):
             return {
                 "response": _localized(
                     memory_context.user_profile,
@@ -868,6 +930,7 @@ class AssistantAgent:
                 raise ValueError("Model produced an empty output.")
             response_text = _strip_llm_time_placeholders(response_text, time_line)
             response_text = _sanitize_live_data_claims(response_text, used_internet=use_search)
+            response_text = _enforce_bangla_output(response_text, memory_context.user_profile)
             tool_trace = json.dumps(tool_trace_payload, default=str)
         except Exception as exc:
             if _is_model_not_found_error(exc):
@@ -895,6 +958,7 @@ class AssistantAgent:
             else:
                 response_text = _strip_llm_time_placeholders(response_text, time_line)
                 response_text = _sanitize_live_data_claims(response_text, used_internet=use_search)
+                response_text = _enforce_bangla_output(response_text, memory_context.user_profile)
             tool_trace = json.dumps([], default=str)
         return {
             "response": response_text,
@@ -920,7 +984,9 @@ class AssistantAgent:
             yield res["response"]
             yield res
             return
-        if _prefers_bangla_profile(memory_context.user_profile) and _contains_arabic_script(query):
+        if _prefers_bangla_profile(memory_context.user_profile) and (
+            _contains_arabic_script(query) or _contains_cjk_script(query)
+        ):
             res = {
                 "response": _localized(
                     memory_context.user_profile,
@@ -1261,6 +1327,7 @@ class AssistantAgent:
                 raise ValueError("Model produced an empty output.")
             response_text = _strip_llm_time_placeholders(response_text, time_line)
             response_text = _sanitize_live_data_claims(response_text, used_internet=use_search)
+            response_text = _enforce_bangla_output(response_text, memory_context.user_profile)
             tool_trace = json.dumps(tool_trace_payload, default=str)
         except Exception as exc:
             if _is_model_not_found_error(exc):
@@ -1295,6 +1362,7 @@ class AssistantAgent:
             else:
                 response_text = _strip_llm_time_placeholders(response_text, time_line)
                 response_text = _sanitize_live_data_claims(response_text, used_internet=use_search)
+                response_text = _enforce_bangla_output(response_text, memory_context.user_profile)
             tool_trace = json.dumps([], default=str)
         yield {
             "response": response_text,

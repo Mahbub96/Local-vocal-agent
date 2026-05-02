@@ -203,6 +203,7 @@ async def voice_chat(
     db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
     session_id: Annotated[str | None, Form()] = None,
     user_id: Annotated[str | None, Form()] = None,
+    transcript_hint: Annotated[str | None, Form()] = None,
 ) -> VoiceChatResponse:
     audio_bytes = await file.read()
     if not audio_bytes:
@@ -217,6 +218,7 @@ async def voice_chat(
             filename=file.filename or "input.wav",
             session_id=session_id,
             user_id=user_id,
+            transcript_hint=transcript_hint,
         )
         return result.model_copy(update={"audio_url": _tts_public_path(result.audio_path)})
     finally:
@@ -231,6 +233,7 @@ async def voice_chat_stream(
     db_session: Annotated[AsyncSession, Depends(get_async_db_session)],
     session_id: Annotated[str | None, Form()] = None,
     user_id: Annotated[str | None, Form()] = None,
+    transcript_hint: Annotated[str | None, Form()] = None,
 ) -> StreamingResponse:
     """SSE for voice: streams assistant tokens after STT, then emits final VoiceChatResponse."""
     audio_bytes = await file.read()
@@ -246,6 +249,7 @@ async def voice_chat_stream(
                 filename=file.filename or "input.wav",
                 session_id=session_id,
                 user_id=user_id,
+                transcript_hint=transcript_hint,
             ):
                 yield chunk.encode("utf-8")
         finally:

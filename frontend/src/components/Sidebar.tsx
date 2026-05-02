@@ -48,16 +48,16 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-[linear-gradient(180deg,#070b16_0%,#050812_100%)] px-2.5 py-3 backdrop-blur-xl xl:h-full xl:w-aurora-rail",
+        "flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-[linear-gradient(180deg,#050912_0%,#040710_100%)] px-2 py-2.5 backdrop-blur-xl xl:h-full xl:w-aurora-rail",
         className,
         devMode && "ring-1 ring-aurora-cyan/30",
       )}
     >
-      <div className="mb-5 flex items-start justify-between gap-2 px-0.5 sm:mb-6">
-        <div className="relative h-14 flex-1" aria-hidden>
-          <span className="pointer-events-none absolute left-11 right-2 top-1/2 h-4 -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,rgba(112,78,177,0.22),rgba(58,38,103,0.14)_42%,rgba(8,12,24,0.0))]" />
-          <span className="pointer-events-none absolute left-11 right-2 top-1/2 h-px -translate-y-1/2 bg-linear-to-r from-cyan-200/24 via-fuchsia-300/16 to-transparent" />
-          <div className="relative size-11 rounded-full border border-cyan-100/16 shadow-[0_0_10px_rgba(102,187,235,0.22)]">
+      <div className="mb-4 flex items-start justify-between gap-2 px-0.5 sm:mb-5">
+        <div className="relative h-12 flex-1" aria-hidden>
+          <span className="pointer-events-none absolute left-10 right-1 top-1/2 h-3 -translate-y-1/2 rounded-full bg-[linear-gradient(90deg,rgba(112,78,177,0.2),rgba(58,38,103,0.12)_42%,rgba(8,12,24,0.0))]" />
+          <span className="pointer-events-none absolute left-10 right-2 top-1/2 h-px -translate-y-1/2 bg-linear-to-r from-cyan-200/20 via-fuchsia-300/14 to-transparent" />
+          <div className="relative size-10 rounded-full border border-cyan-100/16 shadow-[0_0_8px_rgba(102,187,235,0.2)]">
             <span className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_32%_24%,rgba(197,243,255,0.95),rgba(95,177,210,0.72)_38%,rgba(76,103,168,0.58)_66%,rgba(82,62,143,0.52)_100%)]" />
             <span className="absolute inset-[18%] rounded-full bg-[radial-gradient(circle_at_28%_20%,rgba(255,255,255,0.28),transparent_56%)]" />
           </div>
@@ -74,7 +74,7 @@ export function Sidebar({
         ) : null}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1.5 px-0.5" aria-label="Main navigation">
+      <nav className="flex flex-1 flex-col gap-1 px-0.5" aria-label="Main navigation">
         {NAV_ITEMS.map((item) => {
           const Icon = NAV_ICONS[item];
           const active = activeNav === item;
@@ -87,7 +87,7 @@ export function Sidebar({
               className={cn(
                 "group flex w-full items-center gap-2.5 rounded-full border border-transparent px-3 py-2.5 text-left text-[14px] text-white/74 transition-all duration-200",
                 active
-                  ? "border-cyan-300/24 bg-[linear-gradient(90deg,rgba(97,57,153,0.33),rgba(58,37,101,0.24))] text-white shadow-[0_0_12px_rgba(111,66,168,0.2),inset_0_1px_0_rgba(255,255,255,0.08)]"
+                  ? "border-cyan-300/22 bg-[linear-gradient(90deg,rgba(97,57,153,0.3),rgba(58,37,101,0.22))] text-white shadow-[0_0_10px_rgba(111,66,168,0.2),inset_0_1px_0_rgba(255,255,255,0.08)]"
                   : "hover:border-white/8 hover:bg-white/4 hover:text-white/90",
               )}
             >
@@ -111,7 +111,7 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="mt-5 flex min-h-0 flex-1 flex-col justify-end gap-3">
+      <div className="mt-4 flex min-h-0 flex-1 flex-col justify-end gap-2.5">
         <SystemStatus metrics={metrics} />
         <button
           type="button"

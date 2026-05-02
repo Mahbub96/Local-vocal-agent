@@ -65,7 +65,14 @@ export function MemoryPanel({ profile, onSave }: MemoryPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [form, onSave, prefsText]);
+  }, [
+    form,
+    onSave,
+    prefsText,
+    profile?.assistant_wake_name,
+    profile?.tts_playback_speed,
+    profile?.voice_wake_session_active,
+  ]);
 
   const p = profile;
   const NA = "—";

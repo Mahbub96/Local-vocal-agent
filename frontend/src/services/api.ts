@@ -152,7 +152,7 @@ export async function apiPostVoiceStream(
   formData: FormData,
   callbacks: VoiceStreamCallbacks,
 ): Promise<void> {
-  let res = await fetch(`${API_BASE}/voice-chat/stream`, {
+  const res = await fetch(`${API_BASE}/voice-chat/stream`, {
     method: "POST",
     headers: { Accept: "text/event-stream" },
     body: formData,

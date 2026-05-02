@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import difflib
 import json
 import re
 from pathlib import Path
@@ -105,6 +106,21 @@ def _contains_arabic_script(text: str) -> bool:
     )
 
 
+def _contains_cjk_script(text: str) -> bool:
+    return any(
+        ("\u3040" <= ch <= "\u30ff")  # Hiragana + Katakana
+        or ("\u31f0" <= ch <= "\u31ff")  # Katakana phonetic extensions
+        or ("\u4e00" <= ch <= "\u9fff")  # CJK unified ideographs
+        or ("\u3400" <= ch <= "\u4dbf")  # CJK extension A
+        or ("\u1100" <= ch <= "\u11ff")  # Hangul Jamo
+        or ("\u3130" <= ch <= "\u318f")  # Hangul compatibility Jamo
+        or ("\ua960" <= ch <= "\ua97f")  # Hangul Jamo extended-A
+        or ("\uac00" <= ch <= "\ud7af")  # Hangul syllables
+        or ("\ud7b0" <= ch <= "\ud7ff")  # Hangul Jamo extended-B
+        for ch in text
+    )
+
+
 def _is_low_clarity_transcript(text: str) -> bool:
     t = text.strip()
     if len(t) < 8:
@@ -140,7 +156,30 @@ def _unclear_voice_reply(profile: dict[str, object]) -> str:
 
 
 def _is_transcript_language_mismatch(transcript: str, profile: dict[str, object]) -> bool:
-    return _voice_prefers_bangla(profile) and _contains_arabic_script(transcript)
+    if not _voice_prefers_bangla(profile):
+        return False
+    return _contains_arabic_script(transcript) or _contains_cjk_script(transcript)
+
+
+def _bangla_quality_score(text: str) -> float:
+    t = (text or "").strip()
+    if not t:
+        return 0.0
+    letters = [ch for ch in t if ch.isalpha()]
+    if not letters:
+        return 0.0
+    bn = sum(1 for ch in letters if "\u0980" <= ch <= "\u09ff")
+    latin = sum(1 for ch in letters if "a" <= ch.lower() <= "z")
+    total = max(1, len(letters))
+    # Prefer real Bengali script and penalize heavy Latin-script fallback.
+    return (bn / total) - (0.35 * latin / total)
+
+
+def _normalize_transcript_hint(text: str | None) -> str:
+    t = str(text or "").strip()
+    if not t:
+        return ""
+    return re.sub(r"\s+", " ", t).strip()
 
 
 class VoiceService:
@@ -174,15 +213,15 @@ class VoiceService:
         *,
         input_path: Path,
         user_id: str | None,
+        transcript_hint: str | None = None,
     ) -> tuple[str, dict[str, object], list[Path]]:
         extra_paths: list[Path] = []
         prof: dict[str, object] = {}
         if user_id:
             prof = await self.chat_service.memory_service.get_user_profile(user_id)
+        # Keep Whisper language auto-detection enabled.
+        # Forcing BN from profile made English/mixed speech transcribe incorrectly.
         stt_lang: str | None = None
-        raw = prof.get("language") if prof else None
-        if isinstance(raw, str) and prefers_bangla_tts(raw):
-            stt_lang = "bn"
         try:
             path_for_stt, extra_paths = prepare_for_whisper(
                 input_path,
@@ -190,6 +229,40 @@ class VoiceService:
                 timeout_seconds=float(settings.audio_ffmpeg_timeout_seconds),
             )
             transcript = await self.stt_service.transcribe(path_for_stt, language=stt_lang)
+            if _voice_prefers_bangla(prof) and (
+                _is_low_clarity_transcript(transcript) or _is_transcript_language_mismatch(transcript, prof)
+            ):
+                # Recovery pass: when user prefers Bangla and auto-detect looks noisy,
+                # run a BN-forced pass and keep whichever looks more Bangla-coherent.
+                try:
+                    bn_transcript = await self.stt_service.transcribe(path_for_stt, language="bn")
+                    if _bangla_quality_score(bn_transcript) > _bangla_quality_score(transcript):
+                        transcript = bn_transcript
+                except Exception:
+                    pass
+            hint = _normalize_transcript_hint(transcript_hint)
+            if hint:
+                # Browser live caption often has better short-phrase recognition than server STT.
+                # Prefer it when server transcript looks degraded or clearly mismatched.
+                if (
+                    _is_low_clarity_transcript(transcript)
+                    or _is_transcript_language_mismatch(transcript, prof)
+                    or len(hint) >= len(transcript) + 4
+                    or (
+                        _voice_prefers_bangla(prof)
+                        and contains_bengali_script(hint)
+                        and not contains_bengali_script(transcript)
+                    )
+                    or (
+                        len(hint) >= 8
+                        and len(transcript) >= 8
+                        and difflib.SequenceMatcher(
+                            a=hint.lower(), b=transcript.lower()
+                        ).ratio()
+                        < 0.35
+                    )
+                ):
+                    transcript = hint
             return transcript, prof, extra_paths
         except FFmpegUnavailableError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -213,6 +286,7 @@ class VoiceService:
         filename: str,
         session_id: str | None = None,
         user_id: str | None = None,
+        transcript_hint: str | None = None,
     ) -> VoiceChatResponse:
         suffix = Path(filename).suffix or ".wav"
         input_path = settings.voice_staging_dir / f"{uuid4().hex}{suffix}"
@@ -234,6 +308,7 @@ class VoiceService:
                 transcript, prof, extra_paths = await self._transcribe_uploaded_audio(
                     input_path=input_path,
                     user_id=user_id,
+                    transcript_hint=transcript_hint,
                 )
                 if not transcript:
                     session = await self.chat_service.memory_service.get_or_create_session(
@@ -362,6 +437,7 @@ class VoiceService:
         filename: str,
         session_id: str | None = None,
         user_id: str | None = None,
+        transcript_hint: str | None = None,
     ) -> AsyncIterator[str]:
         """
         SSE lines for voice flow:
@@ -391,6 +467,7 @@ class VoiceService:
                 transcript, prof, extra_paths = await self._transcribe_uploaded_audio(
                     input_path=input_path,
                     user_id=user_id,
+                    transcript_hint=transcript_hint,
                 )
                 if not transcript:
                     session = await self.chat_service.memory_service.get_or_create_session(

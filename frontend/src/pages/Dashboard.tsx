@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLiveSpeechTranscript } from "../hooks/useLiveSpeechTranscript";
 import {
@@ -22,6 +23,9 @@ import { useAuroraDashboard } from "../hooks/useAuroraDashboard";
 import { modelDisplayName } from "../config";
 import type { NavItem } from "../components/layout/navConfig";
 
+const FORCE_STOP_VOICE_RE =
+  /\b(stop|stop speaking|stop now|be quiet|quiet|that's enough|thats enough|enough)\b|থামো|থামুন|বন্ধ করো|চুপ/i;
+
 /**
  * Aurora AI Assistant — full dashboard layout (voice, chat, context rails).
  * Uses live API data from `useAuroraDashboard`.
@@ -30,8 +34,6 @@ import type { NavItem } from "../components/layout/navConfig";
  * panels (thinking / memory / tools) use tabs to stay within the viewport.
  */
 export function Dashboard() {
-  const FORCE_STOP_VOICE_RE =
-    /\b(stop|stop speaking|stop now|be quiet|quiet|that's enough|thats enough|enough)\b|থামো|থামুন|বন্ধ করো|চুপ/i;
   const [navOpen, setNavOpen] = useState(false);
   const [activeNav, setActiveNav] = useState<NavItem>("Home");
   const [mobileContextTab, setMobileContextTab] = useState<MobileContextTabId>("think");
@@ -105,7 +107,7 @@ export function Dashboard() {
     // Force-stop is handled via explicit stop phrase detection below.
     onUtterance: async (blob) => {
       if (isAssistantSpeaking) return;
-      await sendVoiceBlob(blob);
+      await sendVoiceBlob(blob, liveUserText);
     },
     onBargeIn: stopVoicePlayback,
     // Keep acoustic barge-in enabled so saying "stop" can interrupt reliably

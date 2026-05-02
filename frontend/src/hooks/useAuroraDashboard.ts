@@ -340,8 +340,9 @@ export function useAuroraDashboard() {
       setError(String(err));
       setStreamingAssistantText("");
     } finally {
-      if (!isLatestTurnRequest(requestId)) return;
-      setLoading(false);
+      if (isLatestTurnRequest(requestId)) {
+        setLoading(false);
+      }
     }
   }, [
     input,
@@ -359,7 +360,7 @@ export function useAuroraDashboard() {
   const stopVoicePlayback = releaseVoiceAudio;
 
   const sendVoiceBlob = useCallback(
-    async (blob: Blob) => {
+    async (blob: Blob, transcriptHint?: string) => {
       if (!blob.size) return;
       const requestId = beginTurnRequest();
       setLoading(true);
@@ -371,6 +372,8 @@ export function useAuroraDashboard() {
         fd.append("file", blob, `speech.${ext}`);
         fd.append("user_id", USER_ID);
         if (activeSessionId) fd.append("session_id", activeSessionId);
+        const hint = (transcriptHint || "").trim();
+        if (hint.length >= 3) fd.append("transcript_hint", hint);
         stopVoicePlayback();
         setStreamingAssistantText("");
         let usedStreamingTts = false;
@@ -483,9 +486,10 @@ export function useAuroraDashboard() {
         if (!isLatestTurnRequest(requestId)) return;
         setError(String(err));
       } finally {
-        if (!isLatestTurnRequest(requestId)) return;
-        setLoading(false);
-        setVoiceUploadBusy(false);
+        if (isLatestTurnRequest(requestId)) {
+          setLoading(false);
+          setVoiceUploadBusy(false);
+        }
       }
     },
     [

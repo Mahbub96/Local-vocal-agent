@@ -90,8 +90,15 @@ export function useLiveSpeechTranscript(
 
     let rec: SpeechRecognition | null = null;
     let disposed = false;
+    let attemptSeq = 0;
+    let heardAnyToken = false;
+    let noTokenTimer: number | null = null;
 
     const tearDownRec = () => {
+      if (noTokenTimer != null) {
+        window.clearTimeout(noTokenTimer);
+        noTokenTimer = null;
+      }
       if (rec) {
         rec.onresult = null;
         rec.onerror = null;
@@ -112,6 +119,8 @@ export function useLiveSpeechTranscript(
     const startAt = (index: number) => {
       if (disposed || !activeRef.current || index >= langCandidates.length) return;
       const langCode = langCandidates[index]!;
+      const localAttempt = ++attemptSeq;
+      heardAnyToken = false;
 
       tearDownRec();
 
@@ -132,9 +141,11 @@ export function useLiveSpeechTranscript(
             else interim += t;
           }
           if (chunk) {
+            heardAnyToken = true;
             accumulatedRef.current = `${accumulatedRef.current} ${chunk}`.trim();
             setFinalText(accumulatedRef.current);
           }
+          if (interim.trim()) heardAnyToken = true;
           setInterimText(interim.trim());
         };
 
@@ -160,6 +171,16 @@ export function useLiveSpeechTranscript(
         };
 
         r.start();
+        // Some browsers accept Bangla lang code but never emit tokens.
+        // Auto-fallback to next candidate if nothing is heard shortly.
+        noTokenTimer = window.setTimeout(() => {
+          if (disposed || !activeRef.current) return;
+          if (localAttempt !== attemptSeq) return;
+          if (heardAnyToken) return;
+          if (index + 1 >= langCandidates.length) return;
+          tearDownRec();
+          startAt(index + 1);
+        }, 2500);
       } catch {
         if (index + 1 < langCandidates.length) {
           startAt(index + 1);

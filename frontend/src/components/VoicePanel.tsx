@@ -144,7 +144,7 @@ export function VoicePanel({
   const outputSubheading = useMemo(() => {
     if (s === "speaking") return "Speaking";
     return "Idle";
-  }, [liveAssistantOutput, s]);
+  }, [s]);
   const outputStateLine = useMemo(() => {
     if (s === "transcribing") return "Transcribing";
     if (s === "thinking") return "Thinking";

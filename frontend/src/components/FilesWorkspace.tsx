@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { File, Folder, RefreshCw } from "lucide-react";
 import { apiGet } from "../services/api";

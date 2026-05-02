@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useMemo, useState } from "react";
 import type { Profile } from "../types/ui";
 import type { VoiceCaptureMode } from "../hooks/useVoiceCapture";
